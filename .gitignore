@@ -1,0 +1,15 @@
+# Ignore Dependencies (These are huge and auto-installed)
+node_modules/
+*/node_modules/
+
+# Ignore Secrets (Passwords/Keys)
+.env
+*/.env
+
+# Ignore System Files
+.DS_Store
+Thumbs.db
+
+# Ignore Build Outputs
+dist/
+build/
