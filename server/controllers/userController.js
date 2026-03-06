@@ -50,6 +50,11 @@ const registerUser = asyncHandler(async (req, res) => {
 // @desc    Authenticate a user (Login)
 // @route   POST /api/users/login
 // @access  Public
+
+const getMe = asyncHandler(async (req, res) => {
+  // req.user was set by the middleware!
+  res.status(200).json(req.user);
+});
 const loginUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
@@ -81,4 +86,5 @@ const generateToken = (id) => {
 module.exports = {
   registerUser,
   loginUser,
+  getMe, 
 };

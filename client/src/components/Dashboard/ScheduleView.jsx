@@ -1,162 +1,339 @@
-import React, { useState } from 'react';
-import { Clock, MapPin, LayoutList, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Video, User } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { useAuth } from "../../context/AuthContext";
 
-const ScheduleView = () => {
-  const [view, setView] = useState('calendar'); 
-  const days = Array.from({ length: 31 }, (_, i) => i + 1);
-  const events = [
-    { day: 18, title: "Yoga Flow", time: "5 PM", color: "bg-brandOrange/10 text-brandOrange border-brandOrange/20" },
-    { day: 19, title: "HIIT", time: "7 AM", color: "bg-blue-50 text-blue-600 border-blue-100" },
-    { day: 22, title: "Cardio", time: "6 PM", color: "bg-emerald-50 text-emerald-600 border-emerald-100" },
-    { day: 25, title: "Strength", time: "4 PM", color: "bg-amber-50 text-amber-600 border-amber-100" }
-  ];
+const statusStyles = {
+  pending:   { pill: "bg-amber-50 text-amber-600 border border-amber-200",       label: "Pending"   },
+  confirmed: { pill: "bg-emerald-50 text-emerald-600 border border-emerald-200", label: "Confirmed" },
+  rejected:  { pill: "bg-red-50 text-red-500 border border-red-200",             label: "Rejected"  },
+  cancelled: { pill: "bg-gray-100 text-gray-500 border border-gray-200",         label: "Cancelled" },
+  completed: { pill: "bg-blue-50 text-blue-600 border border-blue-200",          label: "Completed" },
+};
+
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+function getDaysInMonth(year, month) {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function getFirstDayOfMonth(year, month) {
+  return new Date(year, month, 1).getDay();
+}
+
+// Try to parse sessionDate into a comparable format
+function parseSessionDate(sessionDate) {
+  if (!sessionDate) return null;
+  // Try ISO format first
+  const iso = new Date(sessionDate);
+  if (!isNaN(iso)) return iso;
+  return null;
+}
+
+function isSameDay(date1, date2) {
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
+  );
+}
+
+export default function ScheduleView() {
+  const { getToken, user } = useAuth();
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [view, setView] = useState("month"); // "month" | "list"
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState(null);
+
+  useEffect(() => {
+    const fetchBookings = async () => {
+      try {
+        const token = getToken();
+        const res = await fetch("http://localhost:5000/api/bookings", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Failed to fetch bookings");
+        // Filter only active bookings (not rejected/cancelled)
+        const active = (Array.isArray(data) ? data : []).filter(
+          (b) => b.status !== "rejected" && b.status !== "cancelled"
+        );
+        setBookings(active);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBookings();
+  }, []);
+
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const daysInMonth = getDaysInMonth(year, month);
+  const firstDay = getFirstDayOfMonth(year, month);
+
+  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+
+  // Get bookings for a specific calendar date
+  const getBookingsForDate = (day) => {
+    const target = new Date(year, month, day);
+    return bookings.filter((b) => {
+      const d = parseSessionDate(b.sessionDate);
+      if (!d) return false;
+      return isSameDay(d, target);
+    });
+  };
+
+  // Upcoming bookings sorted for list view
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const upcomingBookings = bookings
+    .filter((b) => {
+      const d = parseSessionDate(b.sessionDate);
+      return d && d >= today;
+    })
+    .sort((a, b) => parseSessionDate(a.sessionDate) - parseSessionDate(b.sessionDate));
+
+  const selectedDayBookings = selectedDay ? getBookingsForDate(selectedDay) : [];
+
+  const renderCalendar = () => {
+    const cells = [];
+    // Empty cells before first day
+    for (let i = 0; i < firstDay; i++) {
+      cells.push(<div key={`empty-${i}`} className="h-24 bg-gray-50 rounded-lg opacity-40" />);
+    }
+    // Day cells
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dayBookings = getBookingsForDate(day);
+      const isToday = isSameDay(new Date(year, month, day), new Date());
+      const isSelected = selectedDay === day;
+
+      cells.push(
+        <div
+          key={day}
+          onClick={() => setSelectedDay(isSelected ? null : day)}
+          className={`h-24 rounded-lg border p-1.5 cursor-pointer transition-all duration-150 hover:border-orange-300 hover:shadow-sm overflow-hidden
+            ${isToday ? "border-orange-400 bg-orange-50" : "border-gray-100 bg-white"}
+            ${isSelected ? "ring-2 ring-orange-400 ring-offset-1" : ""}
+          `}
+        >
+          <div className={`text-xs font-semibold mb-1 w-6 h-6 flex items-center justify-center rounded-full
+            ${isToday ? "bg-brandOrange text-white" : "text-gray-700"}`}>
+            {day}
+          </div>
+          <div className="space-y-0.5">
+            {dayBookings.slice(0, 2).map((b) => (
+              <div
+                key={b._id}
+                className={`text-xs px-1 py-0.5 rounded truncate font-medium
+                  ${b.status === "confirmed" ? "bg-orange-100 text-orange-700" : "bg-amber-100 text-amber-700"}`}
+              >
+                {b.trainerName || b.trainer?.name || "Trainer"} · {b.sessionTime}
+              </div>
+            ))}
+            {dayBookings.length > 2 && (
+              <div className="text-xs text-gray-400 pl-1">+{dayBookings.length - 2} more</div>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return cells;
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-8 h-8 border-4 border-brandOrange border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-16 text-red-500">
+        <p className="text-lg font-medium">Failed to load schedule</p>
+        <p className="text-sm mt-1">{error}</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-6">
-
+    <div className="p-6 max-w-5xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-2xl border border-gray-100">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">My Schedule</h2>
-          <p className="text-gray-400 text-sm mt-0.5">Manage your upcoming training sessions.</p>
+          <h1 className="text-2xl font-bold text-gray-900">My Schedule</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Your upcoming training sessions</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center bg-gray-50 p-1 rounded-xl border border-gray-100">
-            <button 
-              onClick={() => setView('list')} 
-              className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all
-                ${view === 'list' ? 'bg-white text-gray-900 shadow-sm border border-gray-100' : 'text-gray-400 hover:text-gray-600'}`}
-            >
-              <LayoutList size={14}/> List
-            </button>
-            <button 
-              onClick={() => setView('calendar')} 
-              className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all
-                ${view === 'calendar' ? 'bg-white text-gray-900 shadow-sm border border-gray-100' : 'text-gray-400 hover:text-gray-600'}`}
-            >
-              <CalendarIcon size={14}/> Calendar
-            </button>
-          </div>
-          <button className="bg-brandOrange text-white px-5 py-2.5 rounded-xl text-xs font-bold hover:bg-orange-600 transition shadow-md shadow-brandOrange/20">
-            + Book Session
+        <div className="flex gap-2 bg-gray-100 rounded-lg p-1">
+          <button
+            onClick={() => setView("month")}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+              view === "month" ? "bg-white text-brandOrange shadow-sm" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            Month
+          </button>
+          <button
+            onClick={() => setView("list")}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+              view === "list" ? "bg-white text-brandOrange shadow-sm" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            List
           </button>
         </div>
       </div>
 
-      {view === 'calendar' ? (
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-          {/* Calendar header */}
-          <div className="flex justify-between items-center p-5 border-b border-gray-50">
-            <div className="flex items-center gap-3">
-              <button className="p-2 hover:bg-gray-50 rounded-xl transition text-gray-400 hover:text-gray-700">
-                <ChevronLeft size={18}/>
-              </button>
-              <h3 className="text-base font-bold text-gray-900">January 2026</h3>
-              <button className="p-2 hover:bg-gray-50 rounded-xl transition text-gray-400 hover:text-gray-700">
-                <ChevronRight size={18}/>
-              </button>
-            </div>
-            <button className="text-xs font-bold text-brandOrange hover:underline">Today</button>
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        {[
+          { label: "Upcoming", value: upcomingBookings.length, color: "text-brandOrange" },
+          { label: "Confirmed", value: bookings.filter((b) => b.status === "confirmed").length, color: "text-emerald-600" },
+          { label: "Pending", value: bookings.filter((b) => b.status === "pending").length, color: "text-amber-600" },
+        ].map((stat) => (
+          <div key={stat.label} className="bg-white rounded-xl border border-gray-100 p-4 text-center shadow-sm">
+            <div className={`text-2xl font-bold ${stat.color}`}>{stat.value}</div>
+            <div className="text-xs text-gray-500 mt-0.5">{stat.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {view === "month" ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          {/* Month navigation */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <button
+              onClick={prevMonth}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors text-gray-600"
+            >
+              ‹
+            </button>
+            <h2 className="text-lg font-semibold text-gray-800">
+              {MONTHS[month]} {year}
+            </h2>
+            <button
+              onClick={nextMonth}
+              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors text-gray-600"
+            >
+              ›
+            </button>
           </div>
 
-          {/* Day names */}
-          <div className="grid grid-cols-7 border-b border-gray-50 bg-gray-50/50">
-            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
-              <div key={day} className="py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center">{day}</div>
+          {/* Day headers */}
+          <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-100">
+            {DAYS.map((d) => (
+              <div key={d} className="text-center py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                {d}
+              </div>
             ))}
           </div>
 
           {/* Calendar grid */}
-          <div className="grid grid-cols-7">
-            {/* Padding cells for offset */}
-            {[1, 2, 3].map(pad => (
-              <div key={`pad-${pad}`} className="border-r border-b border-gray-50 bg-gray-50/20 min-h-[90px]" />
-            ))}
-            {days.map(day => {
-              const event = events.find(e => e.day === day);
-              const isToday = day === 18;
-              return (
-                <div 
-                  key={day} 
-                  className={`border-r border-b border-gray-50 p-2 min-h-[90px] transition cursor-pointer group
-                    ${isToday ? 'bg-brandOrange/[0.02]' : 'hover:bg-gray-50/50'}`}
-                >
-                  <span className={`text-xs font-bold w-7 h-7 flex items-center justify-center rounded-full transition
-                    ${isToday 
-                      ? 'bg-brandOrange text-white' 
-                      : 'text-gray-500 group-hover:bg-gray-100'
-                    }`}>
-                    {day}
-                  </span>
-                  {event && (
-                    <div className={`mt-1.5 px-2 py-1.5 rounded-lg text-[10px] font-bold border ${event.color}`}>
-                      {event.time} - {event.title}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          <div className="grid grid-cols-7 gap-1 p-3">
+            {renderCalendar()}
           </div>
+
+          {/* Selected day panel */}
+          {selectedDay && (
+            <div className="border-t border-gray-100 p-4 bg-gray-50">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                {MONTHS[month]} {selectedDay} — {selectedDayBookings.length} session{selectedDayBookings.length !== 1 ? "s" : ""}
+              </h3>
+              {selectedDayBookings.length === 0 ? (
+                <p className="text-sm text-gray-400">No sessions on this day.</p>
+              ) : (
+                <div className="space-y-2">
+                  {selectedDayBookings.map((b) => (
+                    <BookingCard key={b._id} booking={b} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
-        /* ─── List View ─── */
-        <div className="flex flex-col gap-4">
-          {[
-            { 
-              day: "Today", date: "Jan 18", time: "05:00 PM", title: "Yoga Flow", 
-              trainer: "Sita Gurung", type: "Online", status: "Upcoming",
-              statusColor: "bg-brandOrange/10 text-brandOrange",
-              avatar: "https://images.unsplash.com/photo-1518611012118-696072aa579a?q=80&w=100"
-            },
-            { 
-              day: "Tomorrow", date: "Jan 19", time: "07:00 AM", title: "HIIT Cardio", 
-              trainer: "Priya Karki", type: "In-Person", status: "Confirmed",
-              statusColor: "bg-emerald-50 text-emerald-600",
-              avatar: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?q=80&w=100"
-            },
-            { 
-              day: "Wed", date: "Jan 22", time: "06:00 PM", title: "Cardio Blast", 
-              trainer: "Rohan Shrestha", type: "In-Person", status: "Confirmed",
-              statusColor: "bg-emerald-50 text-emerald-600",
-              avatar: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=100"
-            }
-          ].map((session, i) => (
-            <div key={i} className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-col md:flex-row md:items-center gap-4 hover:border-gray-200 hover:shadow-sm transition group cursor-pointer">
-              {/* Date badge */}
-              <div className="flex flex-col items-center justify-center min-w-[60px] p-3 bg-gray-50 rounded-xl">
-                <span className="text-[10px] font-bold text-gray-400 uppercase">{session.day}</span>
-                <span className="text-xl font-bold text-gray-800">{session.date.split(' ')[1]}</span>
-                <span className="text-[10px] text-gray-400">{session.date.split(' ')[0]}</span>
-              </div>
-
-              {/* Session info */}
-              <div className="flex items-center gap-4 flex-1">
-                <img src={session.avatar} alt={session.trainer} className="w-11 h-11 rounded-xl object-cover" />
-                <div className="flex-1">
-                  <h3 className="font-bold text-gray-800 group-hover:text-brandOrange transition">{session.title}</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">with {session.trainer}</p>
-                </div>
-              </div>
-
-              {/* Meta */}
-              <div className="flex items-center gap-3 text-xs text-gray-500">
-                <div className="flex items-center gap-1.5 bg-gray-50 px-3 py-1.5 rounded-lg">
-                  <Clock size={12}/> {session.time}
-                </div>
-                <div className="flex items-center gap-1.5 bg-gray-50 px-3 py-1.5 rounded-lg">
-                  {session.type === 'Online' ? <Video size={12}/> : <MapPin size={12}/>}
-                  {session.type}
-                </div>
-                <span className={`px-3 py-1.5 rounded-lg text-[11px] font-bold ${session.statusColor}`}>
-                  {session.status}
-                </span>
-              </div>
-            </div>
-          ))}
+        // List view
+        <div className="space-y-3">
+          {upcomingBookings.length === 0 ? (
+            <EmptyState />
+          ) : (
+            upcomingBookings.map((b) => (
+              <BookingCard key={b._id} booking={b} showDate />
+            ))
+          )}
         </div>
       )}
     </div>
   );
-};
+}
 
-export default ScheduleView;
+function BookingCard({ booking: b, showDate = false }) {
+  const style = statusStyles[b.status] || statusStyles.pending;
+  const parsedDate = parseSessionDate(b.sessionDate);
+  const dateStr = parsedDate
+    ? parsedDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+    : b.sessionDate;
+
+  return (
+    <div className="flex items-center gap-4 bg-white rounded-xl border border-gray-100 p-4 shadow-sm hover:shadow-md transition-shadow">
+      {/* Time block */}
+      <div className="flex-shrink-0 w-16 text-center">
+        <div className="text-xs text-gray-400 font-medium">{b.sessionTime?.split(" ")[1] || ""}</div>
+        <div className="text-sm font-bold text-gray-800">{b.sessionTime?.split(" ")[0] || b.sessionTime}</div>
+        {showDate && (
+          <div className="text-xs text-gray-400 mt-0.5">{dateStr}</div>
+        )}
+      </div>
+
+      {/* Divider */}
+      <div className="w-px h-10 bg-gray-100" />
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-gray-800 text-sm truncate">
+          {b.trainerName || b.trainer?.name || "Trainer"}
+        </div>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium
+            ${b.sessionType === "Online" ? "bg-blue-50 text-blue-600" : "bg-purple-50 text-purple-600"}`}>
+            {b.sessionType === "Online" ? "🖥" : "📍"} {b.sessionType}
+          </span>
+          {b.packageName && (
+            <span className="text-xs text-gray-400">· {b.packageName}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Status */}
+      <div>
+        <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${style.pill}`}>
+          {style.label}
+        </span>
+      </div>
+
+      {/* Price */}
+      {b.price && (
+        <div className="text-sm font-semibold text-gray-700 flex-shrink-0">
+          Rs. {b.price.toLocaleString()}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="text-center py-20 bg-white rounded-2xl border border-gray-100">
+      <div className="text-5xl mb-4">📅</div>
+      <h3 className="text-lg font-semibold text-gray-700 mb-2">No upcoming sessions</h3>
+      <p className="text-sm text-gray-400">
+        Book a session with a trainer to see it here.
+      </p>
+    </div>
+  );
+}
