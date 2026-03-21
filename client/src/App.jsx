@@ -4,6 +4,7 @@ import LandingPage from './Pages/LandingPage';
 import Onboarding from './Pages/Onboarding';
 import TrainerDetails from './Pages/TrainerDetails';
 import UserDashboard from './Pages/UserDashboard';
+import CallPage from './Pages/CallPage';
 // Import new pages
 import Login from './Pages/Login';
 import Signup from './Pages/Signup';
@@ -22,6 +23,7 @@ const App = () => {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/trainer-dashboard" element={<TrainerDashboard />} />
+        <Route path="/call" element={<CallPage />} />
       </Routes>
     </Router>
   );

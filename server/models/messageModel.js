@@ -12,40 +12,31 @@ const messageSchema = mongoose.Schema(
       ref: 'User',
       required: true,
     },
+
+    // Text content
     content: {
       type: String,
       default: '',
-      maxlength: [1000, 'Message cannot exceed 1000 characters'],
-      trim: true,
+      maxlength: 1000,
     },
-    // For image/file messages
-    fileUrl: {
-      type: String,
-      default: null,
-    },
-    fileType: {
-      type: String,
-      enum: ['image', 'pdf', 'file', null],
-      default: null,
-    },
-    fileName: {
-      type: String,
-      default: null,
-    },
-    read: {
-      type: Boolean,
-      default: false,
-    },
-    // true = sender has no booking with receiver
-    isRequest: {
-      type: Boolean,
-      default: false,
-    },
-    // receiver accepted the request
-    requestAccepted: {
-      type: Boolean,
-      default: false,
-    },
+
+    // File / image / voice attachment
+    fileUrl:      { type: String,  default: null },
+    fileType:     { type: String,  enum: ['image', 'pdf', 'file', 'voice', null], default: null },
+    fileName:     { type: String,  default: null },
+    fileDuration: { type: Number,  default: null }, // seconds — for voice messages
+
+    // Read receipt
+    read: { type: Boolean, default: false },
+
+    // Message request system
+    isRequest:       { type: Boolean, default: false },
+    requestAccepted: { type: Boolean, default: false },
+
+    // Call log
+    isCallLog:    { type: Boolean, default: false },
+    callStatus:   { type: String,  enum: ['initiated', 'accepted', 'declined', 'missed', null], default: null },
+    callDuration: { type: Number,  default: null }, // seconds
   },
   { timestamps: true }
 );

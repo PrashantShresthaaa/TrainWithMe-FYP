@@ -1,544 +1,411 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Loader, AlertCircle, XCircle, CheckCircle, Clock,
-  Calendar, Video, MapPin, Star, Eye, UserCheck, Inbox,
-  Package, ChevronRight, Zap
-} from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import React, { useState, useEffect, useRef } from 'react';
+import { Loader, User, Calendar, Video, MapPin, Clock, Package, Phone, PhoneOff, CheckCircle, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { io } from 'socket.io-client';
+
+const API = 'http://localhost:5000';
 
 const statusStyles = {
-  pending:   { pill: 'bg-amber-50 text-amber-600 border border-amber-200',       dot: 'bg-amber-400',   label: 'Pending'   },
-  confirmed: { pill: 'bg-emerald-50 text-emerald-600 border border-emerald-200', dot: 'bg-emerald-400', label: 'Confirmed' },
-  rejected:  { pill: 'bg-red-50 text-red-500 border border-red-200',             dot: 'bg-red-400',     label: 'Rejected'  },
-  cancelled: { pill: 'bg-gray-100 text-gray-500 border border-gray-200',         dot: 'bg-gray-300',    label: 'Cancelled' },
-  completed: { pill: 'bg-blue-50 text-blue-600 border border-blue-200',          dot: 'bg-blue-400',    label: 'Completed' },
+  pending:   { pill: 'bg-amber-50 text-amber-600 border border-amber-200',       label: 'Pending'   },
+  confirmed: { pill: 'bg-emerald-50 text-emerald-600 border border-emerald-200', label: 'Confirmed' },
+  rejected:  { pill: 'bg-red-50 text-red-500 border border-red-200',             label: 'Rejected'  },
+  cancelled: { pill: 'bg-gray-100 text-gray-500 border border-gray-200',         label: 'Cancelled' },
+  completed: { pill: 'bg-blue-50 text-blue-600 border border-blue-200',          label: 'Completed' },
 };
 
-// Works whether trainer is a populated object OR a plain ID string
-const getTrainerId = (trainer) => {
-  if (!trainer) return null;
-  if (typeof trainer === 'string') return trainer;
-  if (trainer._id) return trainer._id.toString();
-  return trainer.toString();
+const sessionStatusStyles = {
+  scheduled: 'bg-amber-50 text-amber-600 border border-amber-200',
+  live:      'bg-green-50 text-green-600 border border-green-200',
+  completed: 'bg-blue-50 text-blue-600 border border-blue-200',
+  missed:    'bg-red-50 text-red-500 border border-red-200',
 };
 
-const getTrainerName  = (trainer) => (trainer?.name  || 'Trainer');
-const getTrainerEmail = (trainer) => (trainer?.email || '');
+export default function MyTrainersView() {
+  const [bookings,     setBookings]     = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [expanded,     setExpanded]     = useState({});
+  const [sessions,     setSessions]     = useState({});
+  const [incomingCall, setIncomingCall] = useState(null);
+  const [callDeclined, setCallDeclined] = useState(null);
 
-// ── Package definitions ──
-const PACKAGES = [
-  {
-    id: 'single',
-    label: 'Single Session',
-    sessions: 1,
-    period: null,
-    badge: null,
-    description: 'Try a session before committing',
-    discount: 0,
-  },
-  {
-    id: 'weekly',
-    label: 'Weekly Pack',
-    sessions: 3,
-    period: 'week',
-    badge: 'Popular',
-    description: '3 sessions per week for focused progress',
-    discount: 5,
-  },
-  {
-    id: 'monthly',
-    label: 'Monthly Pack',
-    sessions: 12,
-    period: 'month',
-    badge: 'Best Value',
-    description: '12 sessions over a month — save more',
-    discount: 15,
-  },
-  {
-    id: 'quarterly',
-    label: '3-Month Pack',
-    sessions: 36,
-    period: '3 months',
-    badge: 'Max Savings',
-    description: '36 sessions over 3 months — biggest discount',
-    discount: 25,
-  },
-];
+  const socketRef    = useRef(null);
+  const ringtoneRef  = useRef(null);
+  const currentUser  = JSON.parse(localStorage.getItem('user') || '{}');
+  const authHeader   = { 'Content-Type': 'application/json', Authorization: `Bearer ${currentUser?.token}` };
 
-// ── Package Booking Modal ──
-const PackageModal = ({ trainer, basePrice, onClose, onBook }) => {
-  const [selected, setSelected] = useState('monthly');
-  const [sessionType, setSessionType] = useState('In-Person');
-  const [startDate, setStartDate] = useState('');
-  const [loading, setLoading] = useState(false);
+  // ── Helpers ──
+  const playRingtone = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const ring = () => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = 480; osc.type = 'sine';
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.8);
+      };
+      ring();
+      ringtoneRef.current = { ctx, interval: setInterval(ring, 1500) };
+    } catch {}
+  };
 
-  const pkg = PACKAGES.find(p => p.id === selected);
-  const pricePerSession = Math.round(basePrice * (1 - pkg.discount / 100));
-  const totalPrice = pricePerSession * pkg.sessions;
+  const stopRingtone = () => {
+    if (!ringtoneRef.current) return;
+    clearInterval(ringtoneRef.current.interval);
+    try { ringtoneRef.current.ctx.close(); } catch {}
+    ringtoneRef.current = null;
+  };
 
-  const handleBook = async () => {
-    if (!startDate) { alert('Please select a start date'); return; }
-    setLoading(true);
-    await onBook({ package: pkg, sessionType, startDate, pricePerSession, totalPrice });
+  const openCallTab = (roomId, remoteUser, isInitiator, isOfficialSession) => {
+    const cu = JSON.parse(localStorage.getItem('user') || '{}');
+    const p = new URLSearchParams({
+      roomId,
+      remoteUserId:      remoteUser._id,
+      remoteUserName:    remoteUser.name,
+      isInitiator:       isInitiator ? '1' : '0',
+      isOfficialSession: isOfficialSession ? '1' : '0',
+      currentUserId:     cu._id,
+      currentUserName:   cu.name,
+      token:             cu.token,
+    });
+    window.open(`/call?${p.toString()}`, '_blank', 'width=960,height=680,noopener');
+  };
+
+  const fetchBookings = async () => {
+    try {
+      const res = await fetch(`${API}/api/bookings`, { headers: authHeader });
+      if (res.ok) setBookings(await res.json());
+    } catch {}
     setLoading(false);
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-
-        {/* Header */}
-        <div className="bg-[#111] text-white p-6">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-1">Book a Package with</p>
-              <h3 className="text-xl font-bold">{getTrainerName(trainer)}</h3>
-            </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-white text-xl font-bold">×</button>
-          </div>
-          <p className="text-gray-400 text-sm mt-2">Base rate: Rs. {basePrice} / session</p>
-        </div>
-
-        <div className="p-6 space-y-5">
-          {/* Package selection */}
-          <div>
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Choose Package</p>
-            <div className="grid grid-cols-2 gap-3">
-              {PACKAGES.map(p => {
-                const discountedPrice = Math.round(basePrice * (1 - p.discount / 100));
-                const total = discountedPrice * p.sessions;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => setSelected(p.id)}
-                    className={`relative text-left p-4 rounded-xl border-2 transition-all ${
-                      selected === p.id
-                        ? 'border-brandOrange bg-orange-50'
-                        : 'border-gray-100 hover:border-gray-200'
-                    }`}
-                  >
-                    {p.badge && (
-                      <span className="absolute -top-2 -right-2 bg-brandOrange text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
-                        {p.badge}
-                      </span>
-                    )}
-                    <p className="font-bold text-sm text-gray-800">{p.label}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{p.sessions} session{p.sessions > 1 ? 's' : ''}{p.period ? ` / ${p.period}` : ''}</p>
-                    <div className="mt-2">
-                      {p.discount > 0 && (
-                        <span className="text-[10px] text-green-600 font-bold bg-green-50 px-1.5 py-0.5 rounded mr-1">
-                          -{p.discount}%
-                        </span>
-                      )}
-                      <span className="text-sm font-bold text-gray-800">Rs. {total.toLocaleString()}</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-xs text-gray-400 mt-2 italic">{pkg.description}</p>
-          </div>
-
-          {/* Session type */}
-          <div>
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Session Type</p>
-            <div className="flex gap-3">
-              {['In-Person', 'Online'].map(type => (
-                <button
-                  key={type}
-                  onClick={() => setSessionType(type)}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold border-2 transition ${
-                    sessionType === type
-                      ? 'border-brandOrange bg-orange-50 text-brandOrange'
-                      : 'border-gray-100 text-gray-500 hover:border-gray-200'
-                  }`}
-                >
-                  {type === 'Online' ? <Video size={14} className="inline mr-1" /> : <MapPin size={14} className="inline mr-1" />}
-                  {type}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Start date */}
-          <div>
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Start Date</p>
-            <input
-              type="date"
-              value={startDate}
-              onChange={e => setStartDate(e.target.value)}
-              min={new Date().toISOString().split('T')[0]}
-              className="w-full border-2 border-gray-100 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-brandOrange transition"
-            />
-          </div>
-
-          {/* Price summary */}
-          <div className="bg-gray-50 rounded-xl p-4">
-            <div className="flex justify-between text-sm mb-1">
-              <span className="text-gray-500">Rs. {basePrice} × {pkg.sessions} sessions</span>
-              <span className="text-gray-400 line-through">Rs. {(basePrice * pkg.sessions).toLocaleString()}</span>
-            </div>
-            {pkg.discount > 0 && (
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-green-600 font-medium">Package discount ({pkg.discount}%)</span>
-                <span className="text-green-600 font-medium">-Rs. {(basePrice * pkg.sessions - totalPrice).toLocaleString()}</span>
-              </div>
-            )}
-            <div className="flex justify-between font-bold text-base border-t border-gray-200 pt-2 mt-2">
-              <span>Total</span>
-              <span className="text-brandOrange">Rs. {totalPrice.toLocaleString()}</span>
-            </div>
-            <p className="text-[11px] text-gray-400 mt-1">Rs. {pricePerSession} per session</p>
-          </div>
-
-          <button
-            onClick={handleBook}
-            disabled={loading}
-            className="w-full bg-brandOrange hover:bg-orange-600 text-white font-bold py-3.5 rounded-xl transition shadow-lg shadow-brandOrange/20 flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            {loading ? <Loader size={16} className="animate-spin" /> : <Zap size={16} />}
-            {loading ? 'Booking...' : `Book ${pkg.label} — Rs. ${totalPrice.toLocaleString()}`}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ── Main Component ──
-const MyTrainersView = ({ setActiveTab }) => {
-  const { getToken } = useAuth();
-  const [section, setSection] = useState('trainers');
-  const [bookings, setBookings] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [cancellingId, setCancellingId] = useState(null);
-  const [packageModal, setPackageModal] = useState(null); // { trainer, basePrice }
-
-  const fetchBookings = async () => {
-    setLoading(true);
+  const loadSession = async (bookingId) => {
+    if (sessions[bookingId] !== undefined) return;
+    setSessions(prev => ({ ...prev, [bookingId]: 'loading' }));
     try {
-      const res = await fetch('http://localhost:5000/api/bookings', {
-        headers: { 'Authorization': `Bearer ${getToken()}` },
-      });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setBookings(data);
+      const res = await fetch(`${API}/api/sessions/booking/${bookingId}`, { headers: authHeader });
+      const data = res.ok ? await res.json() : null;
+      setSessions(prev => ({ ...prev, [bookingId]: data }));
     } catch {
-      // silently fail
-    } finally {
-      setLoading(false);
+      setSessions(prev => ({ ...prev, [bookingId]: null }));
     }
   };
 
-  useEffect(() => { fetchBookings(); }, []);
+  const startOfficialSession = async (booking) => {
+    let sess = sessions[booking._id];
+    if (!sess || sess === 'loading') {
+      try {
+        const res = await fetch(`${API}/api/sessions/booking/${booking._id}`, { headers: authHeader });
+        sess = await res.json();
+        setSessions(prev => ({ ...prev, [booking._id]: sess }));
+      } catch { return; }
+    }
+    const trainer = booking.trainer;
+    socketRef.current?.emit('call:initiate', {
+      toUserId:          trainer._id || trainer,
+      fromUserId:        currentUser._id,
+      fromUserName:      currentUser.name,
+      roomId:            sess.roomId,
+      isOfficialSession: true,
+    });
+    openCallTab(sess.roomId, { _id: trainer._id || trainer, name: trainer.name || 'Trainer' }, true, true);
+  };
 
-  const handleCancel = async (bookingId) => {
-    if (!window.confirm('Cancel this booking?')) return;
-    setCancellingId(bookingId);
+  const acceptCall = () => {
+    if (!incomingCall) return;
+    stopRingtone();
+    socketRef.current?.emit('call:accepted', {
+      toUserId:       incomingCall.fromUserId,
+      roomId:         incomingCall.roomId,
+      remoteUserId:   currentUser._id,
+      remoteUserName: currentUser.name,
+      isOfficialSession: incomingCall.isOfficialSession,
+    });
+    openCallTab(incomingCall.roomId, { _id: incomingCall.fromUserId, name: incomingCall.fromUserName }, false, incomingCall.isOfficialSession);
+    setIncomingCall(null);
+  };
+
+  const declineCall = () => {
+    if (!incomingCall) return;
+    stopRingtone();
+    socketRef.current?.emit('call:declined', {
+      toUserId:     incomingCall.fromUserId,
+      roomId:       incomingCall.roomId,
+      fromUserName: currentUser.name,
+    });
+    setIncomingCall(null);
+  };
+
+  const cancelBooking = async (bookingId) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/bookings/${bookingId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
+      await fetch(`${API}/api/bookings/${bookingId}/status`, {
+        method: 'PATCH', headers: authHeader,
         body: JSON.stringify({ status: 'cancelled' }),
       });
-      if (!res.ok) throw new Error();
-      setBookings(prev => prev.map(b => b._id === bookingId ? { ...b, status: 'cancelled' } : b));
-    } catch {
-      alert('Failed to cancel. Please try again.');
-    } finally {
-      setCancellingId(null);
-    }
+      fetchBookings();
+    } catch {}
   };
 
-  const handlePackageBook = async ({ package: pkg, sessionType, startDate, pricePerSession, totalPrice }, trainer) => {
-    try {
-      const trainerId = getTrainerId(trainer);
-      const res = await fetch('http://localhost:5000/api/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
-        body: JSON.stringify({
-          trainerId,
-          sessionDate: startDate,
-          sessionTime: '09:00 AM',
-          sessionType,
-          price: totalPrice,
-          notes: `Package: ${pkg.label} (${pkg.sessions} sessions, ${pkg.discount}% discount)`,
-        }),
-      });
-      if (!res.ok) throw new Error();
-      await fetchBookings();
-      setPackageModal(null);
-      alert(`✅ ${pkg.label} booked successfully!`);
-    } catch {
-      alert('Booking failed. Please try again.');
-    }
-  };
-
-  // ── Fix: works whether trainer is object or plain ID ──
-  const confirmedBookings = bookings.filter(b => b.status === 'confirmed' || b.status === 'completed');
-
-  const uniqueTrainers = confirmedBookings.reduce((acc, booking) => {
-    const id = getTrainerId(booking.trainer);
-    if (id && !acc.find(t => getTrainerId(t.trainer) === id)) acc.push(booking);
-    return acc;
+  // ── Effects ──
+  useEffect(() => {
+    fetchBookings();
+    const socket = io(API, { transports: ['websocket'] });
+    socketRef.current = socket;
+    socket.on('connect', () => socket.emit('join', currentUser?._id));
+    socket.on('call:incoming', ({ fromUserId, fromUserName, roomId, isOfficialSession }) => {
+      setIncomingCall({ fromUserId, fromUserName, roomId, isOfficialSession });
+      playRingtone();
+    });
+    socket.on('call:declined', ({ fromUserName }) => {
+      setCallDeclined({ name: fromUserName || 'They' });
+      setTimeout(() => setCallDeclined(null), 4000);
+    });
+    socket.on('call:accepted', ({ roomId, remoteUserId, remoteUserName, isOfficialSession }) => {
+      openCallTab(roomId, { _id: remoteUserId, name: remoteUserName }, true, isOfficialSession);
+    });
+    return () => socket.disconnect();
   }, []);
 
-  const pendingCount = bookings.filter(b => b.status === 'pending').length;
+  useEffect(() => {
+    bookings
+      .filter(b => b.sessionType === 'Online' && b.status === 'confirmed')
+      .forEach(b => loadSession(b._id));
+  }, [bookings]);
+
+  // ── Derived data ──
+  const trainerMap = bookings.reduce((acc, b) => {
+    const tid = (b.trainer?._id || b.trainer || '').toString();
+    if (!tid) return acc;
+    if (!acc[tid]) acc[tid] = { trainer: b.trainer, bookings: [] };
+    acc[tid].bookings.push(b);
+    return acc;
+  }, {});
+  const trainers = Object.values(trainerMap);
+
+  const totalUpcoming  = bookings.filter(b => b.status === 'confirmed').length;
+  const totalPending   = bookings.filter(b => b.status === 'pending').length;
+  const totalCompleted = bookings.filter(b => b.status === 'completed').length;
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-64">
+      <Loader size={28} className="animate-spin text-brandOrange" />
+    </div>
+  );
 
   return (
-    <>
-      {/* Package Modal */}
-      {packageModal && (
-        <PackageModal
-          trainer={packageModal.trainer}
-          basePrice={packageModal.basePrice}
-          onClose={() => setPackageModal(null)}
-          onBook={(details) => handlePackageBook(details, packageModal.trainer)}
-        />
-      )}
+    <div className="flex flex-col gap-6">
 
-      <div className="flex flex-col gap-6">
-
-        {/* Page Header with tabs */}
-        <div className="bg-white p-5 rounded-2xl border border-gray-100">
-          <h2 className="text-xl font-bold text-gray-900">My Trainers</h2>
-          <p className="text-gray-400 text-sm mt-0.5">View your trainers and all your booking requests.</p>
-
-          <div className="flex gap-2 mt-4">
-            <button
-              onClick={() => setSection('trainers')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition ${
-                section === 'trainers'
-                  ? 'bg-brandOrange text-white shadow-md shadow-brandOrange/20'
-                  : 'bg-gray-100 text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <UserCheck size={15} /> My Trainers
-              {uniqueTrainers.length > 0 && (
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${section === 'trainers' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`}>
-                  {uniqueTrainers.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setSection('requests')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition ${
-                section === 'requests'
-                  ? 'bg-brandOrange text-white shadow-md shadow-brandOrange/20'
-                  : 'bg-gray-100 text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Inbox size={15} /> Booking Requests
-              {pendingCount > 0 && (
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${section === 'requests' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-600'}`}>
-                  {pendingCount} pending
-                </span>
-              )}
-            </button>
+      {/* Header stats */}
+      <div className="bg-white p-5 rounded-2xl border border-gray-100">
+        <h2 className="text-xl font-bold text-gray-900">My Trainers</h2>
+        <p className="text-gray-400 text-sm mt-0.5">Your bookings and online sessions.</p>
+        <div className="flex gap-4 mt-4">
+          <div className="flex-1 bg-orange-50 rounded-xl p-3 text-center">
+            <p className="text-2xl font-bold text-brandOrange">{trainers.length}</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mt-0.5">Trainers</p>
+          </div>
+          <div className="flex-1 bg-emerald-50 rounded-xl p-3 text-center">
+            <p className="text-2xl font-bold text-emerald-600">{totalUpcoming}</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mt-0.5">Upcoming</p>
+          </div>
+          <div className="flex-1 bg-amber-50 rounded-xl p-3 text-center">
+            <p className="text-2xl font-bold text-amber-600">{totalPending}</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mt-0.5">Pending</p>
+          </div>
+          <div className="flex-1 bg-blue-50 rounded-xl p-3 text-center">
+            <p className="text-2xl font-bold text-blue-600">{totalCompleted}</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mt-0.5">Completed</p>
           </div>
         </div>
-
-        {/* Loading */}
-        {loading && (
-          <div className="flex items-center justify-center py-24">
-            <Loader size={28} className="animate-spin text-brandOrange" />
-          </div>
-        )}
-
-        {/* ── MY TRAINERS ── */}
-        {!loading && section === 'trainers' && (
-          <>
-            {uniqueTrainers.length === 0 ? (
-              <EmptyState
-                icon={<UserCheck size={40} className="text-gray-300" />}
-                title="No confirmed trainers yet"
-                desc="Once a trainer accepts your booking, they'll appear here."
-                action="Find a Trainer"
-                onAction={() => setActiveTab('explore')}
-              />
-            ) : (
-              <div className="grid md:grid-cols-2 gap-5">
-                {uniqueTrainers.map((booking) => {
-                  const trainerName  = getTrainerName(booking.trainer);
-                  const trainerEmail = getTrainerEmail(booking.trainer);
-                  const trainerId    = getTrainerId(booking.trainer);
-
-                  const completedCount = bookings.filter(
-                    b => getTrainerId(b.trainer) === trainerId && b.status === 'completed'
-                  ).length;
-                  const confirmedCount = bookings.filter(
-                    b => getTrainerId(b.trainer) === trainerId && b.status === 'confirmed'
-                  ).length;
-
-                  return (
-                    <div key={booking._id} className="bg-white rounded-2xl border border-gray-100 p-6 hover:border-gray-200 hover:shadow-sm transition">
-
-                      {/* Trainer header */}
-                      <div className="flex items-center gap-4 mb-5">
-                        <div className="w-14 h-14 rounded-2xl bg-brandOrange/10 text-brandOrange flex items-center justify-center font-bold text-xl shrink-0">
-                          {trainerName.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="font-bold text-gray-800 text-base">{trainerName}</h3>
-                          <p className="text-xs text-gray-400">{trainerEmail}</p>
-                          <div className="flex items-center gap-1 mt-1">
-                            <Star size={12} fill="#FF6700" className="text-brandOrange" />
-                            <span className="text-xs font-bold text-gray-600">Active Trainer</span>
-                          </div>
-                        </div>
-                        <span className="text-xs font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 px-2.5 py-1 rounded-full">
-                          Confirmed
-                        </span>
-                      </div>
-
-                      {/* Stats */}
-                      <div className="grid grid-cols-2 gap-3 mb-5">
-                        <div className="bg-gray-50 rounded-xl p-3 text-center">
-                          <p className="text-2xl font-bold text-gray-800">{completedCount}</p>
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mt-0.5">Sessions Done</p>
-                        </div>
-                        <div className="bg-orange-50 rounded-xl p-3 text-center">
-                          <p className="text-2xl font-bold text-brandOrange">{confirmedCount}</p>
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mt-0.5">Upcoming</p>
-                        </div>
-                      </div>
-
-                      {/* Next session */}
-                      <div className="bg-gray-50 rounded-xl p-3 mb-4 flex items-center gap-3">
-                        <Clock size={14} className="text-brandOrange shrink-0" />
-                        <div>
-                          <p className="text-[10px] font-bold text-gray-400 uppercase">Next Session</p>
-                          <p className="text-xs font-semibold text-gray-700">
-                            {booking.sessionDate} at {booking.sessionTime} · {booking.sessionType}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setPackageModal({ trainer: booking.trainer, basePrice: booking.price })}
-                          className="flex-1 flex items-center justify-center gap-2 bg-brandOrange text-white hover:bg-orange-600 py-2.5 rounded-xl text-xs font-bold transition shadow-md shadow-brandOrange/20"
-                        >
-                          <Package size={14} /> Book Package
-                        </button>
-                        <button
-                          onClick={() => setActiveTab('messages')}
-                          className="flex-1 flex items-center justify-center gap-2 bg-gray-100 text-gray-600 hover:bg-gray-200 py-2.5 rounded-xl text-xs font-bold transition"
-                        >
-                          Message
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ── BOOKING REQUESTS ── */}
-        {!loading && section === 'requests' && (
-          <>
-            {bookings.length === 0 ? (
-              <EmptyState
-                icon={<Inbox size={40} className="text-gray-300" />}
-                title="No booking requests yet"
-                desc="When you send a booking request, it will appear here."
-                action="Find a Trainer"
-                onAction={() => setActiveTab('explore')}
-              />
-            ) : (
-              <div className="flex flex-col gap-4">
-                {bookings.map((booking) => {
-                  const trainerName = getTrainerName(booking.trainer);
-                  const style = statusStyles[booking.status] || statusStyles.pending;
-                  const isPending   = booking.status === 'pending';
-                  const isConfirmed = booking.status === 'confirmed';
-
-                  return (
-                    <div key={booking._id} className="bg-white rounded-2xl border border-gray-100 p-5 hover:border-gray-200 transition">
-                      <div className="flex flex-col md:flex-row md:items-center gap-4">
-
-                        {/* Trainer info */}
-                        <div className="flex items-center gap-3 flex-1">
-                          <div className="relative">
-                            <div className="w-11 h-11 rounded-xl bg-brandOrange/10 text-brandOrange flex items-center justify-center font-bold text-sm shrink-0">
-                              {trainerName.charAt(0).toUpperCase()}
-                            </div>
-                            <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${style.dot}`} />
-                          </div>
-                          <div>
-                            <p className="font-bold text-gray-800">{trainerName}</p>
-                            <p className="text-xs text-gray-400">{getTrainerEmail(booking.trainer)}</p>
-                          </div>
-                        </div>
-
-                        {/* Session details */}
-                        <div className="flex flex-wrap gap-2 text-xs text-gray-500">
-                          <span className="flex items-center gap-1 bg-gray-50 px-2.5 py-1.5 rounded-lg">
-                            <Calendar size={11} /> {booking.sessionDate}
-                          </span>
-                          <span className="flex items-center gap-1 bg-gray-50 px-2.5 py-1.5 rounded-lg">
-                            <Clock size={11} /> {booking.sessionTime}
-                          </span>
-                          <span className="flex items-center gap-1 bg-gray-50 px-2.5 py-1.5 rounded-lg">
-                            {booking.sessionType === 'Online' ? <Video size={11} /> : <MapPin size={11} />}
-                            {booking.sessionType}
-                          </span>
-                          <span className="bg-gray-50 px-2.5 py-1.5 rounded-lg font-semibold text-gray-700">
-                            Rs. {booking.price?.toLocaleString()}
-                          </span>
-                        </div>
-
-                        {/* Status */}
-                        <span className={`text-xs font-bold px-3 py-1.5 rounded-lg shrink-0 ${style.pill}`}>
-                          {style.label}
-                        </span>
-
-                        {/* Cancel */}
-                        {(isPending || isConfirmed) && (
-                          <button
-                            onClick={() => handleCancel(booking._id)}
-                            disabled={cancellingId === booking._id}
-                            className="flex items-center gap-1.5 text-xs font-bold text-red-400 hover:text-red-600 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-xl border border-red-100 transition disabled:opacity-50 shrink-0"
-                          >
-                            {cancellingId === booking._id ? <Loader size={12} className="animate-spin" /> : <XCircle size={13} />}
-                            Cancel
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Status message */}
-                      <div className="mt-3 pt-3 border-t border-gray-50 flex items-center gap-2 flex-wrap">
-                        {isPending   && <p className="text-xs text-amber-600 font-medium flex items-center gap-1.5"><AlertCircle size={12} /> Waiting for trainer to confirm</p>}
-                        {isConfirmed && <p className="text-xs text-emerald-600 font-medium flex items-center gap-1.5"><CheckCircle size={12} /> Session confirmed by trainer!</p>}
-                        {booking.status === 'rejected'  && <p className="text-xs text-red-500 font-medium flex items-center gap-1.5"><XCircle size={12} /> Request declined by trainer</p>}
-                        {booking.status === 'completed' && <p className="text-xs text-blue-600 font-medium flex items-center gap-1.5"><CheckCircle size={12} /> Session completed</p>}
-                        {booking.status === 'cancelled' && <p className="text-xs text-gray-400 font-medium flex items-center gap-1.5"><XCircle size={12} /> You cancelled this booking</p>}
-                        {booking.notes && <span className="ml-auto text-xs text-gray-400 italic truncate max-w-xs">"{booking.notes}"</span>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </>
-        )}
       </div>
-    </>
+
+      {/* Empty state */}
+      {trainers.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <User size={40} className="text-gray-200 mb-3" />
+          <p className="text-lg font-bold text-gray-500">No trainers yet</p>
+          <p className="text-sm text-gray-400 mt-1">Book a session from the Find Trainers page</p>
+        </div>
+      )}
+
+      {/* Trainer cards */}
+      {trainers.map(({ trainer, bookings: tb }) => {
+        const tid            = (trainer?._id || trainer || '').toString();
+        const trainerName    = trainer?.name  || 'Trainer';
+        const trainerEmail   = trainer?.email || '';
+        const latest         = tb.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+        const confirmedCount = tb.filter(b => b.status === 'confirmed').length;
+        const completedCount = tb.filter(b => b.status === 'completed').length;
+        const isExpanded     = expanded[tid];
+        const isPackage      = latest?.notes?.startsWith('Package:');
+        const onlineReady    = tb.filter(b => b.sessionType === 'Online' && b.status === 'confirmed');
+
+        return (
+          <div key={tid} className="bg-white rounded-2xl border border-gray-100 p-5 hover:border-gray-200 transition">
+
+            {/* Trainer header */}
+            <div className="flex flex-col md:flex-row md:items-center gap-4">
+              <div className="flex items-center gap-3 flex-1">
+                <div className="w-12 h-12 rounded-xl bg-brandOrange/10 text-brandOrange flex items-center justify-center font-bold text-lg shrink-0">
+                  {trainerName.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p className="font-bold text-gray-800">{trainerName}</p>
+                  <p className="text-xs text-gray-400">{trainerEmail}</p>
+                  <div className="flex items-center gap-3 mt-1 text-[10px] font-bold text-gray-400">
+                    <span className="text-emerald-600">{confirmedCount} upcoming</span>
+                    <span>·</span>
+                    <span className="text-blue-600">{completedCount} completed</span>
+                    <span>·</span>
+                    <span>{tb.length} total</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 text-xs text-gray-500">
+                <span className="flex items-center gap-1 bg-gray-50 px-2.5 py-1.5 rounded-lg">
+                  <Calendar size={11} /> {latest?.sessionDate}
+                </span>
+                <span className="flex items-center gap-1 bg-gray-50 px-2.5 py-1.5 rounded-lg">
+                  <Clock size={11} /> {latest?.sessionTime}
+                </span>
+                <span className="flex items-center gap-1 bg-gray-50 px-2.5 py-1.5 rounded-lg">
+                  {latest?.sessionType === 'Online' ? <Video size={11}/> : <MapPin size={11}/>}
+                  {latest?.sessionType}
+                </span>
+                {isPackage && (
+                  <span className="flex items-center gap-1 bg-orange-50 text-brandOrange px-2.5 py-1.5 rounded-lg font-bold">
+                    <Package size={11}/> Package
+                  </span>
+                )}
+              </div>
+
+              <span className={`text-xs font-bold px-3 py-1.5 rounded-lg shrink-0 ${(statusStyles[latest?.status] || statusStyles.pending).pill}`}>
+                {(statusStyles[latest?.status] || statusStyles.pending).label}
+              </span>
+            </div>
+
+            {/* Online session blocks */}
+            {onlineReady.map(booking => {
+              const sess = sessions[booking._id];
+              return (
+                <div key={booking._id} className="mt-4 bg-blue-50 border border-blue-100 rounded-xl p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-bold text-blue-700 flex items-center gap-1.5">
+                      <Video size={12} /> Online Session
+                      <span className="font-normal text-blue-500 ml-1">{booking.sessionDate} · {booking.sessionTime}</span>
+                    </p>
+                    {sess && sess !== 'loading' && (
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${sessionStatusStyles[sess.sessionStatus] || ''}`}>
+                        {sess.sessionStatus}
+                      </span>
+                    )}
+                  </div>
+
+                  {(!sess || sess === 'loading' || sess?.sessionStatus === 'scheduled') && (
+                    <button onClick={() => startOfficialSession(booking)} disabled={sess === 'loading'}
+                      className="w-full py-2 bg-brandOrange text-white text-xs font-bold rounded-lg hover:bg-orange-600 transition flex items-center justify-center gap-2 disabled:opacity-50">
+                      <Video size={13} /> Join Session
+                    </button>
+                  )}
+                  {sess?.sessionStatus === 'live' && (
+                    <button onClick={() => startOfficialSession(booking)}
+                      className="w-full py-2 bg-green-500 text-white text-xs font-bold rounded-lg hover:bg-green-600 transition flex items-center justify-center gap-2 animate-pulse">
+                      <Video size={13} /> Rejoin Live Session
+                    </button>
+                  )}
+                  {sess?.sessionStatus === 'completed' && (
+                    <p className="text-xs text-blue-600 font-semibold flex items-center gap-1.5">
+                      <CheckCircle size={12} /> Completed{sess.durationMinutes ? ` · ${sess.durationMinutes} min` : ''}
+                    </p>
+                  )}
+                  {sess?.sessionStatus === 'missed' && (
+                    <p className="text-xs text-red-500 font-semibold flex items-center gap-1.5">
+                      <XCircle size={12} /> Session missed
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* All bookings expandable */}
+            {tb.length > 1 && (
+              <div className="mt-4 pt-4 border-t border-gray-50">
+                <button onClick={() => setExpanded(p => ({ ...p, [tid]: !p[tid] }))}
+                  className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider hover:text-gray-600 transition mb-2">
+                  All Bookings ({tb.length})
+                  {isExpanded ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
+                </button>
+                {isExpanded && (
+                  <div className="flex flex-col gap-2">
+                    {tb.map(b => {
+                      const s = statusStyles[b.status] || statusStyles.pending;
+                      return (
+                        <div key={b._id} className="flex items-center justify-between text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                          <span>{b.sessionDate} at {b.sessionTime} · {b.sessionType}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-700">Rs. {b.price?.toLocaleString()}</span>
+                            <span className={`font-bold px-2 py-0.5 rounded-full text-[10px] ${s.pill}`}>{s.label}</span>
+                            {b.status === 'pending' && (
+                              <button onClick={() => cancelBooking(b._id)} className="text-[10px] font-bold text-red-400 hover:text-red-600">Cancel</button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {latest?.notes && (
+              <div className="mt-3 pt-3 border-t border-gray-50">
+                <p className="text-xs text-gray-400 italic">"{latest.notes}"</p>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Call declined toast */}
+      {callDeclined && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
+          <PhoneOff size={18} className="text-red-400 shrink-0" />
+          <p className="text-sm font-semibold">{callDeclined.name} declined the call</p>
+        </div>
+      )}
+
+      {/* Incoming call overlay */}
+      {incomingCall && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={e => e.stopPropagation()}>
+          <div className="bg-gray-900 rounded-3xl p-8 shadow-2xl text-center max-w-sm w-full mx-4 border border-gray-700">
+            <div className="relative w-24 h-24 mx-auto mb-5">
+              <div className="absolute inset-0 rounded-full bg-brandOrange/20 animate-ping" />
+              <div className="absolute inset-2 rounded-full bg-brandOrange/30 animate-ping" style={{ animationDelay: '0.2s' }} />
+              <div className="relative w-24 h-24 rounded-full bg-brandOrange flex items-center justify-center">
+                <Phone size={32} className="text-white" />
+              </div>
+            </div>
+            <h3 className="text-xl font-bold text-white mb-1">Incoming Call</h3>
+            <p className="text-gray-400 text-sm mb-2">{incomingCall.fromUserName} is calling</p>
+            {incomingCall.isOfficialSession && (
+              <span className="inline-block mb-4 text-xs font-bold bg-green-500/20 text-green-400 px-3 py-1 rounded-full border border-green-500/30">
+                Official Session Call
+              </span>
+            )}
+            <p className="text-gray-500 text-xs mb-5">You must accept or decline to continue</p>
+            <div className="flex gap-3">
+              <button onClick={declineCall} className="flex-1 py-4 rounded-2xl bg-red-500/20 text-red-400 font-bold hover:bg-red-500/30 border border-red-500/30 transition flex items-center justify-center gap-2">
+                <PhoneOff size={20} /> Decline
+              </button>
+              <button onClick={acceptCall} className="flex-1 py-4 rounded-2xl bg-green-500 text-white font-bold hover:bg-green-600 transition flex items-center justify-center gap-2">
+                <Phone size={20} /> Accept
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
-};
-
-const EmptyState = ({ icon, title, desc, action, onAction }) => (
-  <div className="flex flex-col items-center justify-center py-24 text-center">
-    <div className="mb-4">{icon}</div>
-    <p className="text-lg font-bold text-gray-500">{title}</p>
-    <p className="text-sm text-gray-400 mt-1 mb-5">{desc}</p>
-    <button onClick={onAction} className="bg-brandOrange text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-orange-600 transition shadow-lg shadow-brandOrange/20">
-      {action}
-    </button>
-  </div>
-);
-
-export default MyTrainersView;
+}
