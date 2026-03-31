@@ -1,12 +1,20 @@
-import React, { useState } from 'react';
-import { 
-  Home, Calendar, MessageSquare, TrendingUp, Settings, LogOut, 
-  Bell, Menu, ChevronDown, Compass, UserCheck
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  Home,
+  Calendar,
+  MessageSquare,
+  TrendingUp,
+  Settings,
+  LogOut,
+  Menu,
+  Compass,
+  UserCheck,
+  ChevronRight,
+  CalendarPlus,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-// Imports
 import DashboardHome from '../components/Dashboard/DashboardHome';
 import ScheduleView from '../components/Dashboard/ScheduleView';
 import MessagesView from '../components/Dashboard/MessagesView';
@@ -14,17 +22,87 @@ import ProgressView from '../components/Dashboard/ProgressView';
 import SettingsView from '../components/Dashboard/SettingsView';
 import ExploreView from '../components/Dashboard/ExploreView';
 import MyTrainersView from '../components/Dashboard/MyTrainersView';
+import NotificationBell from '../components/Shared/NotificationBell';
+import PostLoginSplash from '../components/Shared/PostLoginSplash';
+
+const pageMeta = {
+  dashboard: {
+    title: 'Overview',
+    subtitle: 'Your training hub.',
+  },
+  explore: {
+    title: 'Find Trainers',
+    subtitle: 'Browse and book confidently.',
+  },
+  mytrainers: {
+    title: 'My Trainers',
+    subtitle: 'Bookings, calls, and trainer relationships.',
+  },
+  schedule: {
+    title: 'Schedule',
+    subtitle: 'Keep upcoming sessions in view.',
+  },
+  messages: {
+    title: 'Messages',
+    subtitle: 'Stay connected with trainers.',
+  },
+  progress: {
+    title: 'Progress',
+    subtitle: 'Track your momentum.',
+  },
+  settings: {
+    title: 'Settings',
+    subtitle: 'Manage your account.',
+  },
+};
+
+const BrandMark = () => (
+  <div
+    className="text-[22px] leading-none"
+    style={{
+      fontFamily: '"Playfair Display", Georgia, serif',
+      fontStyle: 'italic',
+      fontWeight: 600,
+      letterSpacing: '-0.03em',
+    }}
+  >
+    <span className="text-white">Train</span>
+    <span className="text-[#FF6700]">With</span>
+    <span className="text-white">Me</span>
+  </div>
+);
 
 const UserDashboard = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
+
+  const hasSplash = Boolean(location.state?.showSplash);
+
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [selectedTrainer, setSelectedTrainer] = useState(null); // trainer to auto-open in messages
+  const [selectedTrainer, setSelectedTrainer] = useState(null);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [showSplash, setShowSplash] = useState(hasSplash);
+  const [dashboardReady, setDashboardReady] = useState(!hasSplash);
+
+  useEffect(() => {
+    if (location.state?.showSplash) {
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate]);
+
+  const handleDashboardReady = useCallback(() => {
+    setDashboardReady(true);
+  }, []);
 
   const getInitials = (name) => {
     if (!name) return '?';
-    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+    return name
+      .split(' ')
+      .map((part) => part[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
   };
 
   const getFirstName = (name) => {
@@ -32,143 +110,274 @@ const UserDashboard = () => {
     return name.split(' ')[0];
   };
 
-  // Called from ExploreView Message button
-  const openMessagesWithTrainer = (trainer) => {
-    setSelectedTrainer(trainer);
-    setActiveTab('messages');
-  };
-
   const handleLogout = () => {
     logout();
     navigate('/');
   };
 
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setSidebarOpen(false);
+  };
+
+  const openMessagesWithTrainer = (trainer) => {
+    setSelectedTrainer(trainer);
+    setActiveTab('messages');
+  };
+
   const renderContent = () => {
     switch (activeTab) {
-      case 'dashboard':   return <DashboardHome setActiveTab={setActiveTab} userName={getFirstName(user?.name)} />;
-      case 'explore':     return <ExploreView setActiveTab={setActiveTab} openMessagesWithTrainer={openMessagesWithTrainer} />;
-      case 'mytrainers':  return <MyTrainersView setActiveTab={setActiveTab} />;
-      case 'schedule':    return <ScheduleView />;
-      case 'messages':    return <MessagesView preselectedTrainer={selectedTrainer} />;
-      case 'progress':    return <ProgressView />;
-      case 'settings':    return <SettingsView />;
-      default:            return <DashboardHome setActiveTab={setActiveTab} userName={getFirstName(user?.name)} />;
+      case 'dashboard':
+        return (
+          <DashboardHome
+            setActiveTab={setActiveTab}
+            userName={getFirstName(user?.name)}
+            splashActive={showSplash}
+            onReady={handleDashboardReady}
+          />
+        );
+      case 'explore':
+        return (
+          <ExploreView
+            setActiveTab={setActiveTab}
+            openMessagesWithTrainer={openMessagesWithTrainer}
+          />
+        );
+      case 'mytrainers':
+        return <MyTrainersView setActiveTab={setActiveTab} />;
+      case 'schedule':
+        return <ScheduleView />;
+      case 'messages':
+        return <MessagesView preselectedTrainer={selectedTrainer} />;
+      case 'progress':
+        return <ProgressView />;
+      case 'settings':
+        return <SettingsView />;
+      default:
+        return (
+          <DashboardHome
+            setActiveTab={setActiveTab}
+            userName={getFirstName(user?.name)}
+            splashActive={showSplash}
+            onReady={handleDashboardReady}
+          />
+        );
     }
   };
 
-  // Header title map
-  const pageTitles = {
-    dashboard:  'Overview',
-    explore:    'Find Trainers',
-    mytrainers: 'My Trainers',
-    schedule:   'Schedule',
-    messages:   'Messages',
-    progress:   'Progress',
-    settings:   'Settings',
-  };
+  const currentPage = pageMeta[activeTab] || pageMeta.dashboard;
 
   return (
-    <div className="min-h-screen bg-[#F0F2F5] flex font-sans text-gray-900">
+    <div className="min-h-screen bg-[#F5F7FA] text-[#111111]">
+      <style>{`
+        .twm-sidebar-scroll {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .twm-sidebar-scroll::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
 
-      {/* ── SIDEBAR ── */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#111111] text-[#9ca3af] transition-transform duration-300 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col border-r border-[#333]`}>
+      {showSplash && (
+        <PostLoginSplash
+          userName={location.state?.splashName || user?.name || ''}
+          duration={1400}
+          hold={!dashboardReady}
+          onComplete={() => setShowSplash(false)}
+        />
+      )}
 
-        {/* Profile Header */}
-        <div className="h-16 flex items-center px-5 border-b border-[#333] hover:bg-[#252525] cursor-pointer transition-colors">
-          <div className="w-9 h-9 rounded-full bg-brandOrange flex items-center justify-center text-white font-bold text-sm mr-3 border border-orange-400 shrink-0">
-            {getInitials(user?.name)}
+      {isSidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close sidebar overlay"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/35 md:hidden"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-56 border-r border-gray-800 bg-[#111111] text-white transform transition-transform duration-300 ${
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } md:translate-x-0`}
+      >
+        <div className="flex h-full flex-col overflow-hidden">
+          <div className="border-b border-gray-800 px-4 py-4">
+            <button
+              type="button"
+              onClick={() => handleTabChange('dashboard')}
+              className="w-full text-left"
+            >
+              <BrandMark />
+            </button>
           </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-gray-200 font-bold text-sm truncate">{user?.name || 'Loading...'}</h3>
-            <p className="text-xs text-gray-500 truncate capitalize">{user?.role || 'Member'}</p>
-          </div>
-          <ChevronDown size={16} className="text-gray-500"/>
-        </div>
 
-        {/* Navigation */}
-        <div className="flex-1 overflow-y-auto py-6">
-          <div className="mb-8">
-            <p className="px-5 text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Menu</p>
-            <nav className="space-y-1 px-3">
-              <NavItem icon={<Home size={18}/>}         label="Overview"      id="dashboard"   activeTab={activeTab} setActiveTab={setActiveTab} />
-              <NavItem icon={<Compass size={18}/>}      label="Find Trainers" id="explore"      activeTab={activeTab} setActiveTab={setActiveTab} />
-              <NavItem icon={<UserCheck size={18}/>}    label="My Trainers"   id="mytrainers"  activeTab={activeTab} setActiveTab={setActiveTab} />
-              <NavItem icon={<Calendar size={18}/>}     label="Schedule"      id="schedule"    activeTab={activeTab} setActiveTab={setActiveTab} />
-              <NavItem icon={<MessageSquare size={18}/>} label="Messages"     id="messages"    activeTab={activeTab} setActiveTab={setActiveTab} badge="2"/>
-              <NavItem icon={<TrendingUp size={18}/>}   label="Progress"      id="progress"    activeTab={activeTab} setActiveTab={setActiveTab} />
+          <div className="twm-sidebar-scroll flex-1 overflow-y-auto px-3 py-4">
+            <p className="px-3 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">
+              Navigation
+            </p>
+
+            <nav className="mt-3 space-y-1">
+              <NavItem
+                icon={<Home size={16} />}
+                label="Overview"
+                id="dashboard"
+                activeTab={activeTab}
+                onClick={handleTabChange}
+              />
+              <NavItem
+                icon={<Compass size={16} />}
+                label="Find Trainers"
+                id="explore"
+                activeTab={activeTab}
+                onClick={handleTabChange}
+              />
+              <NavItem
+                icon={<UserCheck size={16} />}
+                label="My Trainers"
+                id="mytrainers"
+                activeTab={activeTab}
+                onClick={handleTabChange}
+              />
+              <NavItem
+                icon={<Calendar size={16} />}
+                label="Schedule"
+                id="schedule"
+                activeTab={activeTab}
+                onClick={handleTabChange}
+              />
+              <NavItem
+                icon={<MessageSquare size={16} />}
+                label="Messages"
+                id="messages"
+                activeTab={activeTab}
+                onClick={handleTabChange}
+              />
+              <NavItem
+                icon={<TrendingUp size={16} />}
+                label="Progress"
+                id="progress"
+                activeTab={activeTab}
+                onClick={handleTabChange}
+              />
+            </nav>
+
+            <p className="mt-6 px-3 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">
+              Account
+            </p>
+
+            <nav className="mt-3 space-y-1">
+              <NavItem
+                icon={<Settings size={16} />}
+                label="Settings"
+                id="settings"
+                activeTab={activeTab}
+                onClick={handleTabChange}
+              />
             </nav>
           </div>
 
-          <div className="mb-8">
-            <p className="px-5 text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Account</p>
-            <nav className="space-y-1 px-3">
-              <NavItem icon={<Settings size={18}/>} label="Settings" id="settings" activeTab={activeTab} setActiveTab={setActiveTab} />
-            </nav>
-          </div>
-        </div>
+          <div className="border-t border-gray-800 px-4 py-3.5">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#FF6700] text-[11px] font-bold text-white">
+                {getInitials(user?.name)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-white">{user?.name || 'Member'}</p>
+                <p className="truncate text-[11px] text-gray-400 capitalize">
+                  {user?.role || 'member'}
+                </p>
+              </div>
+            </div>
 
-        <div className="p-4 border-t border-[#333]">
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-gray-400 hover:text-white hover:bg-[#252525] rounded-md w-full transition-colors"
-          >
-            <LogOut size={18} /> Logout
-          </button>
+            <button
+              onClick={handleLogout}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-md border border-[#FF6700]/35 bg-transparent px-3 py-2 text-sm font-semibold text-[#FF6700] transition hover:border-[#FF6700] hover:bg-[#FF6700]/8"
+            >
+              <LogOut size={14} />
+              Logout
+            </button>
+          </div>
         </div>
       </aside>
 
-      {/* ── MAIN CONTENT ── */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+      <div className="min-h-screen md:ml-56">
+        <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/92 backdrop-blur-sm">
+          <div className="mx-auto flex max-w-[1380px] items-center justify-between gap-4 px-5 py-3 md:px-6">
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                className="rounded-lg border border-gray-200 p-2 text-gray-600 transition hover:bg-gray-50 md:hidden"
+                onClick={() => setSidebarOpen((prev) => !prev)}
+              >
+                <Menu size={17} />
+              </button>
 
-        {/* Header */}
-        <header className="bg-white h-16 border-b border-gray-200 flex items-center justify-between px-8 shrink-0 z-10">
-          <div className="flex items-center gap-4 w-1/2">
-            <button className="md:hidden text-gray-600" onClick={() => setSidebarOpen(!isSidebarOpen)}>
-              <Menu size={20}/>
-            </button>
-            <h2 className="text-xl font-bold text-gray-800 hidden md:block">
-              {pageTitles[activeTab] || activeTab}
-            </h2>
-          </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-[18px] font-bold tracking-tight text-[#111111]">
+                  {currentPage.title}
+                </h1>
+                <p className="hidden text-[13px] text-gray-500 md:block">{currentPage.subtitle}</p>
+              </div>
+            </div>
 
-          <div className="flex items-center gap-5">
-            <button
-              onClick={() => setActiveTab('explore')}
-              className="bg-brandOrange text-white px-4 py-1.5 rounded-md text-xs font-bold hover:bg-orange-600 transition shadow-sm hidden sm:block"
-            >
-              + Book Session
-            </button>
-            <div className="h-6 w-px bg-gray-200"></div>
-            <button className="text-gray-500 hover:text-gray-800"><Bell size={20} /></button>
-            <div className="w-8 h-8 bg-brandOrange text-white rounded-full flex items-center justify-center text-xs font-bold cursor-pointer border border-orange-300">
-              {getInitials(user?.name)}
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={() => handleTabChange('explore')}
+                className="hidden items-center gap-2 rounded-md border border-[#FF6700]/35 bg-transparent px-3.5 py-2 text-sm font-semibold text-[#FF6700] transition hover:border-[#FF6700] hover:bg-[#FF6700]/8 sm:flex"
+              >
+                <CalendarPlus size={15} />
+                Book Session
+              </button>
+
+              <div className="flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white">
+                <NotificationBell onNavigate={setActiveTab} />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleTabChange('settings')}
+                className="hidden items-center gap-2 rounded-md border border-gray-200 bg-white px-2.5 py-2 transition hover:border-gray-300 md:flex"
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#FF6700] text-[11px] font-bold text-white">
+                  {getInitials(user?.name)}
+                </div>
+                <span className="max-w-[88px] truncate text-sm font-semibold text-[#111111]">
+                  {getFirstName(user?.name)}
+                </span>
+                <ChevronRight size={14} className="text-gray-300" />
+              </button>
             </div>
           </div>
         </header>
 
-        {/* Scrollable Content */}
-        <main className="flex-1 overflow-y-auto bg-[#F7F9FC] p-8">
-          <div className="max-w-[1600px] mx-auto">
-            {renderContent()}
-          </div>
+        <main className="px-5 py-5 md:px-6 md:py-6">
+          <div className="mx-auto max-w-[1380px]">{renderContent()}</div>
         </main>
       </div>
     </div>
   );
 };
 
-const NavItem = ({ icon, label, id, activeTab, setActiveTab, badge }) => (
-  <button
-    onClick={() => setActiveTab(id)}
-    className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md transition-all ${
-      activeTab === id
-        ? 'bg-brandOrange text-white shadow-md font-bold'
-        : 'text-gray-400 hover:text-white hover:bg-[#252525]'
-    }`}
-  >
-    <div className="flex items-center gap-3">{icon} <span>{label}</span></div>
-    {badge && <span className="bg-white text-brandOrange text-[10px] font-bold px-1.5 py-0.5 rounded-full">{badge}</span>}
-  </button>
-);
+const NavItem = ({ icon, label, id, activeTab, onClick }) => {
+  const active = activeTab === id;
+
+  return (
+    <button
+      onClick={() => onClick(id)}
+      className={`flex w-full items-center justify-between rounded-md px-3 py-2.5 text-sm font-semibold transition ${
+        active
+          ? 'bg-[#FF6700] text-white'
+          : 'text-gray-300 hover:bg-white/[0.05] hover:text-white'
+      }`}
+    >
+      <span className="flex items-center gap-3">
+        {icon}
+        <span>{label}</span>
+      </span>
+      <ChevronRight size={14} className={active ? 'text-white/85' : 'text-gray-600'} />
+    </button>
+  );
+};
 
 export default UserDashboard;

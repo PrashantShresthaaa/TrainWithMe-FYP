@@ -2,7 +2,6 @@ const mongoose = require('mongoose');
 
 const bookingSchema = mongoose.Schema(
   {
-    // --- The two parties involved ---
     client: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -14,13 +13,12 @@ const bookingSchema = mongoose.Schema(
       required: [true, 'Booking must have a trainer'],
     },
 
-    // --- Session Details ---
     sessionDate: {
-      type: String, // e.g. "Mon 24" - matches your ExploreView date buttons
+      type: String,
       required: [true, 'Please provide a session date'],
     },
     sessionTime: {
-      type: String, // e.g. "07:00 AM" - matches your ExploreView time slots
+      type: String,
       required: [true, 'Please provide a session time'],
     },
     sessionType: {
@@ -30,20 +28,87 @@ const bookingSchema = mongoose.Schema(
       default: 'Online',
     },
 
-    // --- Pricing (snapshot at time of booking - protects against future price changes) ---
     price: {
       type: Number,
       required: [true, 'Please provide a session price'],
     },
 
-    // --- Booking Lifecycle Status ---
     status: {
       type: String,
-      enum: ['pending', 'confirmed', 'rejected', 'cancelled', 'completed'],
+      enum: [
+        'pending',
+        'accepted_awaiting_payment',
+        'confirmed',
+        'rejected',
+        'cancelled',
+        'completed',
+      ],
       default: 'pending',
     },
 
-    // --- Optional notes from client ---
+    paymentStatus: {
+      type: String,
+      enum: ['unpaid', 'pending', 'paid', 'failed', 'refunded'],
+      default: 'unpaid',
+    },
+
+    paymentMethod: {
+      type: String,
+      enum: ['khalti', 'esewa', 'cash', 'none'],
+      default: 'none',
+    },
+
+    paymentExpiresAt: {
+      type: Date,
+      default: null,
+    },
+
+    totalAmount: {
+      type: Number,
+      default: 0,
+    },
+
+    platformFee: {
+      type: Number,
+      default: 0,
+    },
+
+    trainerEarning: {
+      type: Number,
+      default: 0,
+    },
+
+    platformFeePercent: {
+      type: Number,
+      default: 10,
+    },
+
+    khaltiPidx: {
+      type: String,
+      default: '',
+    },
+
+    khaltiTransactionId: {
+      type: String,
+      default: '',
+    },
+
+    paidAt: {
+      type: Date,
+      default: null,
+    },
+
+    payoutStatus: {
+      type: String,
+      enum: ['held', 'released'],
+      default: 'held',
+    },
+
+    payoutReleasedAt: {
+      type: Date,
+      default: null,
+    },
+
     notes: {
       type: String,
       default: '',
@@ -51,7 +116,7 @@ const bookingSchema = mongoose.Schema(
     },
   },
   {
-    timestamps: true, // Adds createdAt and updatedAt automatically
+    timestamps: true,
   }
 );
 

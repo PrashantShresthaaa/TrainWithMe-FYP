@@ -5,23 +5,11 @@ const User = require('../models/userModel');
 const protect = asyncHandler(async (req, res, next) => {
   let token;
 
-  // Check if header exists and starts with 'Bearer'
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith('Bearer')
-  ) {
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     try {
-      // 1. Get token from header
-      // Format is: "Bearer <token>" -> we split by space and take the second part
       token = req.headers.authorization.split(' ')[1];
-
-      // 2. Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-      // 3. Get user from the token ID (exclude the password)
       req.user = await User.findById(decoded.id).select('-password');
-
-      // 4. Move to the next piece of middleware/controller
       next();
     } catch (error) {
       console.error(error);
@@ -36,4 +24,13 @@ const protect = asyncHandler(async (req, res, next) => {
   }
 });
 
-module.exports = { protect };
+const adminOnly = (req, res, next) => {
+  if (req.user && req.user.role === 'admin') {
+    return next();
+  }
+
+  res.status(403);
+  throw new Error('Admin access only');
+};
+
+module.exports = { protect, adminOnly };

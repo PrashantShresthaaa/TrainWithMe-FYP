@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { Mail, Lock, User, ArrowRight, CheckCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios'; // We need this to make API calls
+import { useAuth } from '../context/AuthContext';
 
 // You will need to install axios if you haven't already!
 
 const Signup = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   
   // State to hold form data
   const [formData, setFormData] = useState({
@@ -48,10 +50,11 @@ const Signup = () => {
 
       if (response.data) {
         console.log('Registration Successful!', response.data);
+        login(response.data);
         
         // --- NEW LOGIC: Redirect based on Role ---
         if (role === 'trainer') {
-            navigate('/trainer-dashboard'); // Trainers go here
+            navigate('/trainer-verification');
         } else {
             navigate('/get-started'); // Clients go to Quiz
         }
