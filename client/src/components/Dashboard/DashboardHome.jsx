@@ -62,7 +62,7 @@ const formatSessionDate = (value) => {
   });
 };
 
-const DashboardShell = ({ splashActive }) => (
+const DashboardShell = () => (
   <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
     <div className="xl:col-span-2 space-y-5">
       <section className="overflow-hidden rounded-lg border border-gray-900 bg-[#111111]">
@@ -201,9 +201,6 @@ const DashboardShell = ({ splashActive }) => (
       ))}
     </div>
 
-    {!splashActive && (
-      <div className="pointer-events-none absolute inset-0 hidden opacity-0" />
-    )}
   </div>
 );
 
@@ -294,8 +291,8 @@ const DashboardHome = ({ setActiveTab, userName, splashActive = false, onReady }
   const bookingStability =
     totalBookings > 0 ? Math.round((confirmedBookings.length / totalBookings) * 100) : 0;
 
-  if (splashActive || loading) {
-    return <DashboardShell splashActive={splashActive} />;
+  if (loading) {
+    return <DashboardShell />;
   }
 
   return (

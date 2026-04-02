@@ -1,162 +1,293 @@
 import React from 'react';
-import { MoreHorizontal, AlertCircle, TrendingUp, Calendar, ArrowRight, Users, Megaphone, Clock, Eye, DollarSign } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowRight,
+  Calendar,
+  Clock3,
+  Eye,
+  Megaphone,
+  MoreHorizontal,
+  TrendingUp,
+  Users,
+} from 'lucide-react';
 
-const TrainerHome = () => {
+const TrainerHome = ({ trainerName = 'Trainer' }) => {
+  const overviewStats = [
+    {
+      icon: <Eye size={15} />,
+      label: 'Profile Views',
+      value: '124',
+      note: '+12% today',
+      accent: 'text-[#FF6700]',
+    },
+    {
+      icon: <Users size={15} />,
+      label: 'Active Clients',
+      value: '18',
+      note: '4 this week',
+      accent: 'text-[#111111]',
+    },
+    {
+      icon: <Clock3 size={15} />,
+      label: 'Open Requests',
+      value: '2',
+      note: 'Needs review',
+      accent: 'text-amber-600',
+    },
+  ];
+
+  const attentionItems = [
+    {
+      name: 'Anish K.',
+      issue: 'Pending booking request',
+      time: '2h ago',
+      tone: 'text-[#FF6700]',
+      button: 'Review',
+    },
+    {
+      name: 'Sarah L.',
+      issue: 'Payment issue detected',
+      time: '1d ago',
+      tone: 'text-red-600',
+      button: 'Resolve',
+    },
+  ];
+
+  const recentActivity = [
+    { user: 'Rahul B.', action: 'completed a workout', time: '10m ago', active: true },
+    { user: 'Anish K.', action: 'booked a session', time: '1h ago' },
+    { user: 'System', action: 'processed a payout', time: '3h ago' },
+    { user: 'Sita G.', action: 'updated availability', time: '5h ago' },
+    { user: 'Priya S.', action: 'sent a message', time: '1d ago' },
+  ];
+
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-      
-      {/* --- LEFT COLUMN (Main Feed) --- */}
-      <div className="xl:col-span-3 space-y-6">
-        
-        {/* 1. REPLACEMENT: Trainer Pulse Bar (Value instead of Trial) */}
-        <div className="bg-white px-6 py-4 rounded-lg border border-gray-200 flex flex-col md:flex-row items-center justify-between shadow-sm gap-4">
-          
-          {/* Item 1: Next Session */}
-          <div className="flex items-center gap-3 w-full md:w-auto border-b md:border-b-0 md:border-r border-gray-100 pb-2 md:pb-0 md:pr-6">
-            <div className="bg-orange-50 text-brandOrange p-2 rounded-lg">
-              <Clock size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Up Next</p>
-              <p className="text-sm font-bold text-gray-800">5:00 PM • Yoga with Anish</p>
-            </div>
-          </div>
+    <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+      <div className="xl:col-span-2 space-y-5">
+        <section
+          className="relative overflow-hidden rounded-lg"
+          style={{
+            backgroundColor: '#1C1C1C',
+            border: '1px solid #2B2B2B',
+          }}
+        >
+          <div
+            className="absolute -left-10 -top-12 h-40 w-40 rounded-full blur-3xl"
+            style={{ background: 'rgba(255,103,0,0.14)' }}
+          />
+          <div
+            className="absolute bottom-0 right-0 h-32 w-40 rounded-full blur-3xl"
+            style={{ background: 'rgba(255,103,0,0.10)' }}
+          />
+          <div
+            className="absolute right-6 top-1/2 h-36 w-36 -translate-y-1/2 rounded-full blur-3xl"
+            style={{ background: 'rgba(255,103,0,0.16)' }}
+          />
 
-          {/* Item 2: Profile Performance */}
-          <div className="flex items-center gap-3 w-full md:w-auto border-b md:border-b-0 md:border-r border-gray-100 pb-2 md:pb-0 md:pr-6">
-            <div className="bg-blue-50 text-blue-600 p-2 rounded-lg">
-              <Eye size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Profile Views</p>
-              <p className="text-sm font-bold text-gray-800">124 today <span className="text-green-500 text-xs font-normal">(+12%)</span></p>
-            </div>
-          </div>
-
-          {/* Item 3: Today's Earnings */}
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <div className="bg-green-50 text-green-600 p-2 rounded-lg">
-              <DollarSign size={18} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Earned Today</p>
-              <p className="text-sm font-bold text-gray-800">Rs. 4,500</p>
-            </div>
-          </div>
-
-        </div>
-
-        {/* 2. Marketing Banner (Replaced Masterclass with Profile Boosting) */}
-        <div className="bg-[#1F2937] rounded-lg p-8 text-white relative overflow-hidden flex items-center shadow-md">
-          <div className="relative z-10 max-w-2xl">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="bg-brandOrange text-white text-xs font-bold px-2 py-0.5 rounded uppercase">Pro Tip</span>
-            </div>
-            <h2 className="text-2xl font-bold mb-2">Boost Your Profile Visibility</h2>
-            <p className="text-gray-300 text-sm mb-6 max-w-lg leading-relaxed">
-              Trainers with complete bios and at least 3 certifications get 2x more bookings. Update your profile to rank higher in search results.
+          <div className="relative px-6 py-5 md:px-7">
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#FF6700]">
+              Visibility
             </p>
-            <button className="bg-brandOrange hover:bg-orange-600 text-white px-6 py-2.5 rounded font-bold text-sm transition shadow-lg shadow-orange-500/20">
-              EDIT PROFILE
-            </button>
-          </div>
-          {/* Abstract Background Design */}
-          <div className="absolute right-0 top-0 h-full w-1/3 bg-gradient-to-l from-black/50 to-transparent"></div>
-          <div className="absolute -right-10 -bottom-20 w-64 h-64 bg-brandOrange/20 rounded-full blur-3xl"></div>
-        </div>
+            <h2 className="mt-2 max-w-xl text-[24px] font-bold leading-tight text-white">
+              Put your profile in front of more clients.
+            </h2>
+            <p className="mt-2 max-w-md text-sm leading-6 text-gray-300">
+              Sharper profile details and updated availability help you stay visible and get
+              chosen faster.
+            </p>
 
-        {/* 3. Action Grid */}
-        <div className="grid md:grid-cols-2 gap-6">
-          
-          {/* Client Alerts */}
-          <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-            <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-              <h3 className="font-bold text-gray-800 text-sm">Needs Attention</h3>
-              <span className="bg-red-100 text-red-600 text-xs font-bold px-2.5 py-0.5 rounded-full">2</span>
+            <div className="mt-5 flex flex-wrap gap-2.5">
+              <button className="inline-flex items-center gap-2 rounded-md border border-[#FF6700]/35 bg-transparent px-4 py-2.5 text-sm font-semibold text-[#FF6700] transition hover:border-[#FF6700] hover:bg-[#FF6700]/8">
+                Edit Profile
+                <ArrowRight size={15} />
+              </button>
+              <button className="rounded-md border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[rgba(255,255,255,0.10)]">
+                Add Certifications
+              </button>
             </div>
-            <div className="p-5 space-y-4">
-              {[
-                { name: "Anish K.", issue: "Pending Booking Request", time: "2h ago", color: "text-brandOrange", bg: "bg-orange-50" },
-                { name: "Sarah L.", issue: "Payment Failed", time: "1d ago", color: "text-red-600", bg: "bg-red-50" },
-              ].map((item, i) => (
-                <div key={i} className="flex items-center justify-between group cursor-pointer hover:bg-gray-50 p-2 rounded-md -mx-2 transition">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
-                       <img src={`https://images.unsplash.com/photo-${1500000000000 + i}?q=80&w=100`} className="w-full h-full object-cover" alt="User"/>
+
+            <div className="mt-5 flex flex-wrap gap-2.5">
+              <span className="rounded-full border border-[rgba(255,255,255,0.10)] bg-[rgba(255,255,255,0.05)] px-3 py-1.5 text-xs font-semibold text-gray-300">
+                Profile ranking improving
+              </span>
+              <span className="rounded-full border border-[#FF6700]/20 bg-[#FF6700]/10 px-3 py-1.5 text-xs font-semibold text-orange-200">
+                Visibility status: High
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#FF6700]/10 text-[#FF6700]">
+                <Calendar size={15} />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400">
+                  Today
+                </p>
+                <p className="mt-0.5 text-sm font-semibold text-[#111111]">
+                  {trainerName}, here is today&apos;s snapshot.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600">
+                1 session scheduled
+              </span>
+              <span className="rounded-full bg-orange-50 px-2.5 py-1 text-[11px] font-semibold text-[#FF6700]">
+                2 items to review
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 divide-x divide-gray-100">
+              {overviewStats.map((stat) => (
+                <CompactStat
+                  key={stat.label}
+                  icon={stat.icon}
+                  label={stat.label}
+                  value={stat.value}
+                  note={stat.note}
+                  accent={stat.accent}
+                />
+              ))}
+          </div>
+        </section>
+
+        <div className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+          <Panel title="Needs Attention" subtitle="Keep bookings and client issues moving.">
+            <div className="divide-y divide-gray-100">
+              {attentionItems.map((item) => (
+                <div
+                  key={item.name}
+                  className="flex items-center justify-between gap-3 px-5 py-4 transition hover:bg-gray-50"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-md bg-gray-100 text-gray-600">
+                      <AlertCircle size={15} />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-gray-800">{item.name}</p>
-                      <p className={`text-xs ${item.color} font-medium`}>{item.issue}</p>
+                      <p className="text-sm font-bold text-[#111111]">{item.name}</p>
+                      <p className={`mt-1 text-sm ${item.tone}`}>{item.issue}</p>
+                      <p className="mt-1 text-xs text-gray-400">{item.time}</p>
                     </div>
                   </div>
-                  <button className="text-xs border border-gray-200 px-3 py-1.5 rounded text-gray-600 hover:bg-white hover:text-brandOrange hover:border-brandOrange transition">Review</button>
+
+                  <button className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:border-[#FF6700]/30 hover:bg-orange-50 hover:text-[#FF6700]">
+                    {item.button}
+                  </button>
                 </div>
               ))}
             </div>
-            <div className="px-5 py-3 border-t border-gray-100 text-center">
-              <button className="text-xs font-bold text-gray-500 hover:text-brandOrange transition">View All Alerts</button>
-            </div>
-          </div>
+          </Panel>
 
-          {/* Quick Actions */}
-          <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-             <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-              <h3 className="font-bold text-gray-800 text-sm">Quick Actions</h3>
+          <Panel title="Quick Actions" subtitle="Jump into the most common trainer tasks.">
+            <div className="grid grid-cols-2 gap-3 px-5 py-5">
+              <ActionButton icon={<Calendar size={18} />} label="Add Event" />
+              <ActionButton icon={<Users size={18} />} label="Add Client" />
+              <ActionButton icon={<Megaphone size={18} />} label="Post Update" />
+              <ActionButton icon={<TrendingUp size={18} />} label="Log Stats" />
             </div>
-            <div className="p-5 grid grid-cols-2 gap-4">
-              <ActionButton icon={<Calendar size={20}/>} label="Add Event" />
-              <ActionButton icon={<Users size={20}/>} label="Add Client" />
-              <ActionButton icon={<Megaphone size={20}/>} label="Post Update" />
-              <ActionButton icon={<TrendingUp size={20}/>} label="Log Stats" />
-            </div>
-          </div>
-
+          </Panel>
         </div>
       </div>
 
-      {/* --- RIGHT COLUMN (Activity Stream) --- */}
-      <div className="xl:col-span-1">
-        <div className="bg-white border border-gray-200 rounded-lg h-full min-h-[600px] shadow-sm flex flex-col">
-          <div className="p-5 border-b border-gray-100 flex justify-between items-center">
-            <h3 className="font-bold text-gray-700 text-xs uppercase tracking-wide">Recent Activity</h3>
-            <button className="text-gray-400 hover:text-gray-600"><MoreHorizontal size={16}/></button>
+      <div className="space-y-5">
+        <Panel title="Recent Activity" subtitle="What is moving across your trainer workspace.">
+          <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-gray-400">
+              Live Feed
+            </p>
+            <button className="text-gray-400 transition hover:text-gray-600">
+              <MoreHorizontal size={16} />
+            </button>
           </div>
-          
-          <div className="flex-1 overflow-y-auto">
-            {[
-              { user: "Rahul B.", action: "completed workout", time: "10m", type: "check" },
-              { user: "Anish K.", action: "booked a session", time: "1h", type: "calendar" },
-              { user: "System", action: "Payout processed", time: "3h", type: "money" },
-              { user: "Sita G.", action: "updated schedule", time: "5h", type: "edit" },
-              { user: "Priya S.", action: "sent a message", time: "1d", type: "msg" },
-            ].map((act, i) => (
-              <div key={i} className="flex gap-4 p-4 border-b border-gray-50 hover:bg-gray-50 transition group">
-                <div className={`mt-1 w-2.5 h-2.5 rounded-full ${i===0 ? 'bg-green-500' : 'bg-gray-300 group-hover:bg-brandOrange'}`}></div>
-                <div>
-                  <p className="text-sm text-gray-800 leading-snug">
-                    <span className="font-bold">{act.user}</span> {act.action}
+
+          <div className="divide-y divide-gray-100">
+            {recentActivity.map((item) => (
+              <div key={`${item.user}-${item.time}`} className="flex gap-3 px-5 py-4">
+                <div
+                  className={`mt-1.5 h-2.5 w-2.5 rounded-full ${
+                    item.active ? 'bg-emerald-500' : 'bg-gray-300'
+                  }`}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm leading-6 text-[#111111]">
+                    <span className="font-bold">{item.user}</span> {item.action}
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">{act.time} ago</p>
+                  <p className="mt-1 text-xs text-gray-400">{item.time}</p>
                 </div>
               </div>
             ))}
           </div>
-          
-          <button className="w-full py-3 text-xs font-bold text-gray-400 hover:text-brandOrange hover:bg-gray-50 border-t border-gray-100 transition">
-            LOAD MORE
-          </button>
-        </div>
-      </div>
+        </Panel>
 
+        <section className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <div className="border-b border-gray-100 px-5 py-4">
+            <h3 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#111111]">
+              Weekly Focus
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Small levers that improve visibility and booking quality.
+            </p>
+          </div>
+
+          <div className="space-y-4 px-5 py-5">
+            <FocusItem title="Profile strength" value="82%" accent="bg-[#FF6700]" />
+            <FocusItem title="Availability coverage" value="68%" accent="bg-[#F59E0B]" />
+            <FocusItem title="Response speed" value="91%" accent="bg-emerald-500" />
+          </div>
+        </section>
+      </div>
     </div>
   );
 };
 
+const Panel = ({ title, subtitle, children }) => (
+  <section className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+    <div className="border-b border-gray-100 px-5 py-4">
+      <h3 className="text-[12px] font-bold uppercase tracking-[0.16em] text-[#111111]">
+        {title}
+      </h3>
+      {subtitle ? <p className="mt-1 text-sm text-gray-500">{subtitle}</p> : null}
+    </div>
+    {children}
+  </section>
+);
+
+const CompactStat = ({ icon, label, value, note, accent }) => (
+  <div className="px-4 py-3.5 text-center">
+    <div className={`mx-auto flex h-7 w-7 items-center justify-center rounded-md bg-gray-50 ${accent}`}>
+      {icon}
+    </div>
+    <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">
+      {label}
+    </p>
+    <p className="mt-1.5 text-[24px] font-bold tracking-tight text-[#111111]">{value}</p>
+    <p className="mt-1 text-[11px] text-gray-400">{note}</p>
+  </div>
+);
+
 const ActionButton = ({ icon, label }) => (
-  <button className="flex flex-col items-center justify-center p-4 border border-gray-100 rounded-lg hover:border-brandOrange/50 hover:bg-orange-50/20 transition group">
-    <div className="text-gray-500 group-hover:text-brandOrange mb-2 transition-colors">{icon}</div>
-    <span className="text-sm font-medium text-gray-600 group-hover:text-gray-900">{label}</span>
+  <button className="flex flex-col items-center justify-center rounded-md border border-gray-200 px-4 py-5 transition hover:border-[#FF6700]/30 hover:bg-orange-50/30">
+    <div className="text-gray-500 transition-colors hover:text-[#FF6700]">{icon}</div>
+    <span className="mt-2 text-sm font-semibold text-gray-700">{label}</span>
   </button>
+);
+
+const FocusItem = ({ title, value, accent }) => (
+  <div>
+    <div className="mb-2 flex items-center justify-between">
+      <span className="text-sm font-semibold text-[#111111]">{title}</span>
+      <span className="text-sm font-bold text-gray-500">{value}</span>
+    </div>
+    <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+      <div className={`h-full rounded-full ${accent}`} style={{ width: value }} />
+    </div>
+  </div>
 );
 
 export default TrainerHome;

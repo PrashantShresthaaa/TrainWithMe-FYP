@@ -403,49 +403,57 @@ export default function MessagesView({ preselectedTrainer = null }) {
 
   return (
     <>
-    <div className="h-[calc(100vh-180px)] min-h-[500px] bg-white rounded-2xl border border-gray-100 flex overflow-hidden shadow-sm">
+    <div className="h-[calc(100vh-150px)] min-h-[620px] rounded-lg border border-gray-200 bg-white flex overflow-hidden shadow-sm">
 
       {/* ════ LEFT: Conversation List ════ */}
-      <div className={`${showMobileChat ? 'hidden' : 'flex'} md:flex w-full md:w-[300px] flex-col border-r border-gray-100 bg-white shrink-0`}>
-        <div className="px-4 pt-4 pb-3 border-b border-gray-50">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-gray-800 text-sm">Messages</h3>
-            {totalUnread > 0 && <span className="bg-brandOrange text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{totalUnread} new</span>}
+      <div className={`${showMobileChat ? 'hidden' : 'flex'} md:flex w-full md:w-[320px] flex-col border-r border-gray-100 bg-white shrink-0`}>
+        <div className="border-b border-gray-100 px-4 pt-4 pb-3">
+          <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+              <h3 className="text-sm font-bold text-gray-800">Inbox</h3>
+              <p className="mt-1 text-xs text-gray-400">Recent conversations and new requests</p>
+            </div>
+            {totalUnread > 0 && <span className="rounded-full bg-brandOrange px-2 py-0.5 text-[10px] font-bold text-white">{totalUnread} new</span>}
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={14} />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." className="w-full bg-gray-50 pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none border border-gray-100 focus:border-brandOrange/30 placeholder-gray-400 transition" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search conversations..." className="w-full rounded-md border border-gray-200 bg-[#FAFAFA] pl-9 pr-4 py-2.5 text-sm outline-none transition focus:border-brandOrange/30 placeholder-gray-400" />
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
           {requests.length > 0 && (
             <div>
-              <div className="px-4 py-2 bg-amber-50 border-b border-amber-100">
-                <p className="text-xs font-bold text-amber-600 flex items-center gap-1.5"><MessageSquare size={11} /> Message Requests ({requests.length})</p>
+                <div className="border-b border-orange-100 bg-orange-50 px-4 py-2.5">
+                  <p className="flex items-center gap-1.5 text-xs font-bold text-[#FF6700]"><MessageSquare size={11} /> Message Requests ({requests.length})</p>
+                </div>
+                {requests.map(conv => <ConvRow key={conv.user._id} conv={conv} active={activeConv?.user._id === conv.user._id} onClick={() => openConversation(conv)} isRequest />)}
               </div>
-              {requests.map(conv => <ConvRow key={conv.user._id} conv={conv} active={activeConv?.user._id === conv.user._id} onClick={() => openConversation(conv)} isRequest />)}
-            </div>
-          )}
-          {regular.length === 0 && requests.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-52 text-center px-6">
-              <MessageSquare size={36} className="mb-3 text-gray-200" />
-              <p className="text-sm font-semibold text-gray-500">No messages yet</p>
-              <p className="text-xs text-gray-400 mt-1">Message a trainer from the Find Trainers page</p>
-            </div>
-          ) : regular.map(conv => <ConvRow key={conv.user._id} conv={conv} active={activeConv?.user._id === conv.user._id} onClick={() => openConversation(conv)} />)}
-        </div>
+            )}
+            {regular.length === 0 && requests.length === 0 ? (
+              <div className="flex h-56 flex-col items-center justify-center px-6 text-center">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-orange-50 text-brandOrange">
+                  <MessageSquare size={22} />
+                </div>
+                <p className="text-sm font-semibold text-gray-600">No conversations yet</p>
+                <p className="mt-1 text-xs text-gray-400">New chats and requests will appear here.</p>
+              </div>
+            ) : regular.map(conv => <ConvRow key={conv.user._id} conv={conv} active={activeConv?.user._id === conv.user._id} onClick={() => openConversation(conv)} />)}
+          </div>
       </div>
 
       {/* ════ RIGHT: Chat Area ════ */}
       <div className={`${showMobileChat ? 'flex' : 'hidden'} md:flex flex-1 flex-col min-w-0 relative`}>
 
         {!activeConv ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
-            <MessageSquare size={48} className="mb-4 text-gray-200" />
-            <p className="text-base font-semibold text-gray-500">Select a conversation</p>
-          </div>
-        ) : (
+            <div className="flex flex-1 flex-col items-center justify-center bg-[linear-gradient(180deg,#FCFCFD_0%,#F7F9FC_100%)] text-gray-400">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-gray-100">
+                <MessageSquare size={30} className="text-gray-300" />
+              </div>
+              <p className="text-lg font-semibold text-gray-600">Select a conversation</p>
+              <p className="mt-1 text-sm text-gray-400">Choose a client to open the chat workspace.</p>
+            </div>
+          ) : (
           <>
             {/* Chat header */}
             <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
@@ -526,7 +534,7 @@ export default function MessagesView({ preselectedTrainer = null }) {
             )}
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-5 bg-[#FAFBFC] flex flex-col gap-2">
+            <div className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#FCFCFD_0%,#F7F9FC_100%)] p-5 flex flex-col gap-2">
               {displayMessages.length === 0 && (
                 <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
                   {msgSearch ? 'No messages match your search' : 'No messages yet. Say hello!'}

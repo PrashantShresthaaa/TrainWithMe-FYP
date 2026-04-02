@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   MessageSquare,
@@ -6,17 +6,14 @@ import {
   Wallet,
   Settings,
   LogOut,
-  Search,
   Menu,
   Calendar,
-  Megaphone,
-  Folder,
-  ChevronDown,
   Inbox,
   ShieldAlert,
   Clock3,
   BadgeCheck,
   Loader,
+  ChevronRight,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -33,9 +30,57 @@ import TrainerVerificationGate from '../components/TrainerDashboard/TrainerVerif
 
 const API = 'http://localhost:5000';
 
+const pageMeta = {
+  overview: {
+    title: 'Overview',
+    subtitle: 'Your trainer workspace at a glance.',
+  },
+  requests: {
+    title: 'Requests',
+    subtitle: 'Review incoming booking requests and approvals.',
+  },
+  messages: {
+    title: 'Messages',
+    subtitle: 'Stay connected with clients in real time.',
+  },
+  clients: {
+    title: 'Clients',
+    subtitle: 'Manage active members and ongoing relationships.',
+  },
+  payments: {
+    title: 'Payments',
+    subtitle: 'Track earnings, payouts, and billing activity.',
+  },
+  schedule: {
+    title: 'Schedule',
+    subtitle: 'Manage your availability and confirmed sessions.',
+  },
+  settings: {
+    title: 'Settings',
+    subtitle: 'Update your profile, visibility, and account details.',
+  },
+};
+
+const BrandMark = () => (
+  <div
+    className="text-[22px] leading-none"
+    style={{
+      fontFamily: '"Playfair Display", Georgia, serif',
+      fontStyle: 'italic',
+      fontWeight: 600,
+      letterSpacing: '-0.03em',
+    }}
+  >
+    <span className="text-white">Train</span>
+    <span className="text-[#FF6700]">With</span>
+    <span className="text-white">Me</span>
+  </div>
+);
+
 const TrainerDashboard = () => {
   const navigate = useNavigate();
   const { user, logout, getToken } = useAuth();
+
   const [activeTab, setActiveTab] = useState('overview');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
@@ -53,9 +98,19 @@ const TrainerDashboard = () => {
       .slice(0, 2);
   };
 
+  const getFirstName = (name) => {
+    if (!name) return 'Trainer';
+    return name.split(' ')[0];
+  };
+
   const handleLogout = () => {
     logout();
     navigate('/');
+  };
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setSidebarOpen(false);
   };
 
   useEffect(() => {
@@ -81,7 +136,7 @@ const TrainerDashboard = () => {
     };
 
     loadTrainerProfile();
-  }, [user?._id]);
+  }, [user?._id, user?.role, getToken]);
 
   const verificationStatus = trainerProfile?.verificationStatus || 'not_submitted';
   const isTrainerApproved =
@@ -100,11 +155,12 @@ const TrainerDashboard = () => {
         });
         if (!res.ok) return;
         const data = await res.json();
-        setPendingCount(data.filter((b) => b.status === 'pending').length);
+        setPendingCount(data.filter((booking) => booking.status === 'pending').length);
       } catch {}
     };
+
     fetchPendingCount();
-  }, [activeTab, isTrainerApproved]);
+  }, [activeTab, getToken, isTrainerApproved]);
 
   useEffect(() => {
     const fetchUnread = async () => {
@@ -118,17 +174,18 @@ const TrainerDashboard = () => {
         setUnreadMessages(total);
       } catch {}
     };
+
     fetchUnread();
     const interval = activeTab !== 'messages' ? setInterval(fetchUnread, 10000) : null;
     return () => clearInterval(interval);
-  }, [activeTab]);
+  }, [activeTab, getToken]);
 
   const openVerificationPage = () => navigate('/trainer-verification');
 
   const renderContent = () => {
     if (profileLoading) {
       return (
-        <div className="flex items-center justify-center h-64">
+        <div className="flex items-center justify-center rounded-lg border border-gray-200 bg-white h-64">
           <div className="flex items-center gap-3 text-gray-500">
             <Loader size={18} className="animate-spin text-brandOrange" />
             <span className="font-semibold text-sm">Loading trainer workspace...</span>
@@ -148,7 +205,7 @@ const TrainerDashboard = () => {
 
     switch (activeTab) {
       case 'overview':
-        return <TrainerHome />;
+        return <TrainerHome trainerName={getFirstName(user?.name)} />;
       case 'requests':
         return <TrainerBookingInbox />;
       case 'schedule':
@@ -162,7 +219,7 @@ const TrainerDashboard = () => {
       case 'settings':
         return <TrainerSettings />;
       default:
-        return <TrainerHome />;
+        return <TrainerHome trainerName={getFirstName(user?.name)} />;
     }
   };
 
@@ -214,109 +271,197 @@ const TrainerDashboard = () => {
     action: 'Open verification',
   };
 
-  return (
-    <div className="min-h-screen bg-[#F0F2F5] flex font-sans text-gray-900">
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#111111] text-[#9ca3af] transition-transform duration-300 transform ${
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } md:relative md:translate-x-0 flex flex-col border-r border-[#333]`}
-      >
-        <div className="h-16 flex items-center px-5 border-b border-[#333] hover:bg-[#252525] cursor-pointer transition-colors">
-          <div className="w-9 h-9 rounded-full bg-brandOrange flex items-center justify-center text-white font-bold text-sm mr-3 border border-orange-400 shrink-0">
-            {getInitials(user?.name)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-gray-200 font-bold text-sm truncate">{user?.name || 'Trainer'}</h3>
-            <p className="text-xs text-gray-500 truncate">Professional Account</p>
-          </div>
-          <ChevronDown size={16} className="text-gray-500" />
-        </div>
+  const currentPage = pageMeta[activeTab] || pageMeta.overview;
+  const headerAction =
+    activeTab === 'requests'
+      ? {
+          label: 'Open Requests',
+          tab: 'requests',
+          icon: <Inbox size={15} />,
+        }
+      : {
+          label: 'Open Schedule',
+          tab: 'schedule',
+          icon: <Calendar size={15} />,
+        };
 
-        <div className="flex-1 overflow-y-auto py-6">
-          <div className="mb-8">
-            <p className="px-5 text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Main Menu</p>
-            <nav className="space-y-1 px-3">
-              <NavItem icon={<LayoutDashboard size={18} />} label="Overview" id="overview" activeTab={activeTab} setActiveTab={setActiveTab} />
+  return (
+    <div className="min-h-screen bg-[#F5F7FA] text-[#111111]">
+      <style>{`
+        .twm-sidebar-scroll {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .twm-sidebar-scroll::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
+
+      {isSidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close sidebar overlay"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/35 md:hidden"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-60 border-r border-gray-800 bg-[#111111] text-white transform transition-transform duration-300 ${
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } md:translate-x-0`}
+      >
+        <div className="flex h-full flex-col overflow-hidden">
+          <div className="border-b border-gray-800 px-4 py-4">
+            <button
+              type="button"
+              onClick={() => handleTabChange('overview')}
+              className="w-full text-left"
+            >
+              <BrandMark />
+            </button>
+          </div>
+
+          <div className="twm-sidebar-scroll flex-1 overflow-y-auto px-3 py-4">
+            <p className="px-3 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">
+              Workspace
+            </p>
+            <nav className="mt-3 space-y-1">
               <NavItem
-                icon={<Inbox size={18} />}
+                icon={<LayoutDashboard size={16} />}
+                label="Overview"
+                id="overview"
+                activeTab={activeTab}
+                onClick={handleTabChange}
+              />
+              <NavItem
+                icon={<Inbox size={16} />}
                 label="Requests"
                 id="requests"
                 activeTab={activeTab}
-                setActiveTab={setActiveTab}
+                onClick={handleTabChange}
                 badge={pendingCount > 0 ? String(pendingCount) : null}
               />
               <NavItem
-                icon={<MessageSquare size={18} />}
+                icon={<MessageSquare size={16} />}
                 label="Messages"
                 id="messages"
                 activeTab={activeTab}
-                setActiveTab={setActiveTab}
+                onClick={handleTabChange}
                 badge={unreadMessages > 0 ? String(unreadMessages) : null}
               />
-              <NavItem icon={<Users size={18} />} label="Clients" id="clients" activeTab={activeTab} setActiveTab={setActiveTab} />
-              <NavItem icon={<Wallet size={18} />} label="Payments" id="payments" activeTab={activeTab} setActiveTab={setActiveTab} />
+              <NavItem
+                icon={<Users size={16} />}
+                label="Clients"
+                id="clients"
+                activeTab={activeTab}
+                onClick={handleTabChange}
+              />
+              <NavItem
+                icon={<Wallet size={16} />}
+                label="Payments"
+                id="payments"
+                activeTab={activeTab}
+                onClick={handleTabChange}
+              />
+            </nav>
+
+            <p className="mt-6 px-3 text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">
+              Manage
+            </p>
+            <nav className="mt-3 space-y-1">
+              <NavItem
+                icon={<Calendar size={16} />}
+                label="Schedule"
+                id="schedule"
+                activeTab={activeTab}
+                onClick={handleTabChange}
+              />
+              <NavItem
+                icon={<Settings size={16} />}
+                label="Settings"
+                id="settings"
+                activeTab={activeTab}
+                onClick={handleTabChange}
+              />
             </nav>
           </div>
 
-          <div className="mb-8">
-            <p className="px-5 text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Management</p>
-            <nav className="space-y-1 px-3">
-              <NavItem icon={<Calendar size={18} />} label="Schedule" id="schedule" activeTab={activeTab} setActiveTab={setActiveTab} />
-              <NavItem icon={<Folder size={18} />} label="Libraries" id="libraries" activeTab={activeTab} setActiveTab={setActiveTab} />
-              <NavItem icon={<Megaphone size={18} />} label="Marketing" id="marketing" activeTab={activeTab} setActiveTab={setActiveTab} />
-            </nav>
-          </div>
+          <div className="border-t border-gray-800 px-4 py-3.5">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#FF6700] text-[11px] font-bold text-white">
+                {getInitials(user?.name)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-white">{user?.name || 'Trainer'}</p>
+                <p className="truncate text-[11px] text-gray-400">Professional account</p>
+              </div>
+            </div>
 
-          <div className="mb-8">
-            <p className="px-5 text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">System</p>
-            <nav className="space-y-1 px-3">
-              <NavItem icon={<Settings size={18} />} label="Settings" id="settings" activeTab={activeTab} setActiveTab={setActiveTab} />
-            </nav>
+            <button
+              onClick={handleLogout}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-md border border-[#FF6700]/35 bg-transparent px-3 py-2 text-sm font-semibold text-[#FF6700] transition hover:border-[#FF6700] hover:bg-[#FF6700]/8"
+            >
+              <LogOut size={14} />
+              Logout
+            </button>
           </div>
-        </div>
-
-        <div className="p-4 border-t border-[#333]">
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-gray-400 hover:text-white hover:bg-[#252525] rounded-md w-full transition-colors"
-          >
-            <LogOut size={18} /> Logout
-          </button>
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
-        <header className="bg-white h-16 border-b border-gray-200 flex items-center justify-between px-8 shrink-0 z-10">
-          <div className="flex items-center gap-4 w-1/2">
-            <button className="md:hidden text-gray-600" onClick={() => setSidebarOpen(!isSidebarOpen)}>
-              <Menu size={20} />
-            </button>
-            <div className="relative w-full max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-              <input
-                type="text"
-                placeholder="Search clients..."
-                className="w-full bg-gray-100 text-gray-800 pl-10 pr-4 py-2 rounded-md text-sm focus:ring-1 focus:ring-brandOrange outline-none border-none placeholder-gray-500 transition"
-              />
-            </div>
-          </div>
+      <div className="min-h-screen md:ml-60">
+        <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/92 backdrop-blur-sm">
+          <div className="mx-auto flex max-w-[1480px] items-center justify-between gap-4 px-5 py-3 md:px-7">
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                className="rounded-lg border border-gray-200 p-2 text-gray-600 transition hover:bg-gray-50 md:hidden"
+                onClick={() => setSidebarOpen((prev) => !prev)}
+              >
+                <Menu size={17} />
+              </button>
 
-          <div className="flex items-center gap-5">
-            <button className="w-8 h-8 flex items-center justify-center bg-brandOrange text-white rounded-md text-lg font-medium hover:bg-orange-600 transition shadow-sm pb-1">
-              +
-            </button>
-            <div className="h-6 w-px bg-gray-200" />
-            <NotificationBell onNavigate={setActiveTab} />
-            <div className="w-8 h-8 bg-brandOrange text-white rounded-full flex items-center justify-center text-xs font-bold cursor-pointer border border-orange-300">
-              {getInitials(user?.name)}
+              <div className="min-w-0">
+                <h1 className="truncate text-[18px] font-bold tracking-tight text-[#111111]">
+                  {currentPage.title}
+                </h1>
+                <p className="hidden text-[13px] text-gray-500 md:block">{currentPage.subtitle}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={() => handleTabChange(headerAction.tab)}
+                className="hidden items-center gap-2 rounded-md border border-[#FF6700]/35 bg-transparent px-3.5 py-2 text-sm font-semibold text-[#FF6700] transition hover:border-[#FF6700] hover:bg-[#FF6700]/8 sm:flex"
+              >
+                {headerAction.icon}
+                {headerAction.label}
+              </button>
+
+              <div className="flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white">
+                <NotificationBell onNavigate={setActiveTab} />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleTabChange('settings')}
+                className="hidden items-center gap-2 rounded-md border border-gray-200 bg-white px-2.5 py-2 transition hover:border-gray-300 md:flex"
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#FF6700] text-[11px] font-bold text-white">
+                  {getInitials(user?.name)}
+                </div>
+                <span className="max-w-[96px] truncate text-sm font-semibold text-[#111111]">
+                  {getFirstName(user?.name)}
+                </span>
+                <ChevronRight size={14} className="text-gray-300" />
+              </button>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto bg-[#F7F9FC] p-8">
-          <div className="max-w-[1600px] mx-auto space-y-6">
+        <main className="px-5 py-5 md:px-7 md:py-6">
+          <div className="mx-auto max-w-[1480px] space-y-5">
             {!profileLoading && !isTrainerApproved && (
-              <div className={`rounded-2xl border px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4 ${statusBanner.tone}`}>
+              <div className={`rounded-lg border px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4 ${statusBanner.tone}`}>
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5">{statusBanner.icon}</div>
                   <div>
@@ -324,12 +469,14 @@ const TrainerDashboard = () => {
                     <p className="text-sm opacity-90 mt-1 leading-6">{statusBanner.text}</p>
                   </div>
                 </div>
-                <button
-                  onClick={openVerificationPage}
-                  className="shrink-0 bg-white/80 text-[#111111] px-4 py-2 rounded-xl text-sm font-bold hover:bg-white transition"
-                >
-                  {statusBanner.action}
-                </button>
+                {statusBanner.action ? (
+                  <button
+                    onClick={openVerificationPage}
+                    className="shrink-0 rounded-md border border-current/20 bg-white/80 px-4 py-2 text-sm font-semibold transition hover:bg-white"
+                  >
+                    {statusBanner.action}
+                  </button>
+                ) : null}
               </div>
             )}
 
@@ -341,24 +488,31 @@ const TrainerDashboard = () => {
   );
 };
 
-const NavItem = ({ icon, label, id, activeTab, setActiveTab, badge }) => (
-  <button
-    onClick={() => setActiveTab(id)}
-    className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md transition-all ${
-      activeTab === id
-        ? 'bg-brandOrange text-white shadow-md font-bold'
-        : 'hover:text-white hover:bg-[#252525]'
-    }`}
-  >
-    <div className="flex items-center gap-3">
-      {icon} <span>{label}</span>
-    </div>
-    {badge && (
-      <span className="bg-white text-brandOrange text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-        {badge}
+const NavItem = ({ icon, label, id, activeTab, onClick, badge }) => {
+  const active = activeTab === id;
+
+  return (
+    <button
+      onClick={() => onClick(id)}
+      className={`flex w-full items-center justify-between rounded-md px-3 py-2.5 text-sm font-semibold transition ${
+        active
+          ? 'bg-[#FF6700] text-white'
+          : 'text-gray-300 hover:bg-white/[0.05] hover:text-white'
+      }`}
+    >
+      <span className="flex items-center gap-3">
+        {icon}
+        <span>{label}</span>
       </span>
-    )}
-  </button>
-);
+      {badge ? (
+        <span className="rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold text-[#FF6700]">
+          {badge}
+        </span>
+      ) : (
+        <ChevronRight size={14} className={active ? 'text-white/85' : 'text-gray-600'} />
+      )}
+    </button>
+  );
+};
 
 export default TrainerDashboard;

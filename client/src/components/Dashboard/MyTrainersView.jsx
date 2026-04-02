@@ -1,7 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Loader, User, Calendar, Video, MapPin, Clock, Package, Phone, PhoneOff,
-  ChevronDown, ChevronUp, CreditCard
+  Calendar,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  CreditCard,
+  Loader,
+  MapPin,
+  Package,
+  Phone,
+  PhoneOff,
+  Search,
+  SlidersHorizontal,
+  User,
+  Video,
+  XCircle,
 } from 'lucide-react';
 import { io } from 'socket.io-client';
 
@@ -21,16 +35,63 @@ const statusStyles = {
 };
 
 const sessionStatusStyles = {
-  scheduled: 'bg-amber-50 text-amber-600 border border-amber-200',
-  live: 'bg-green-50 text-green-600 border border-green-200',
-  completed: 'bg-blue-50 text-blue-600 border border-blue-200',
-  missed: 'bg-red-50 text-red-500 border border-red-200',
+  scheduled: 'bg-amber-50 text-amber-700 border border-amber-200',
+  live: 'bg-green-50 text-green-700 border border-green-200',
+  completed: 'bg-blue-50 text-blue-700 border border-blue-200',
+  missed: 'bg-red-50 text-red-600 border border-red-200',
+};
+
+const scopeOptions = [
+  { id: 'active', label: 'Active Trainers' },
+  { id: 'all', label: 'All Trainers' },
+];
+
+const bookingTypeOptions = [
+  { id: 'all', label: 'All Sessions' },
+  { id: 'online', label: 'Online' },
+  { id: 'offline', label: 'Offline' },
+];
+
+const parseDateValue = (value) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatSessionDate = (value) => {
+  const parsed = parseDateValue(value);
+  if (!parsed) return value || 'Date not set';
+  return parsed.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
+const getBookingFormat = (booking) => {
+  const notes = booking.notes || '';
+  const isPackage = notes.startsWith('Package:');
+
+  if (!isPackage) {
+    return { label: 'Single Session', isPackage: false };
+  }
+
+  const normalizedNotes = notes.replace(/\u2013|\u2014/g, '-');
+  const packageName = normalizedNotes.replace(/^Package:\s*/, '').split('-')[0].trim();
+
+  return {
+    label: packageName ? `Package: ${packageName}` : 'Package Booking',
+    isPackage: true,
+  };
 };
 
 export default function MyTrainersView() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState({});
+  const [trainerScope, setTrainerScope] = useState('active');
+  const [bookingTypeFilter, setBookingTypeFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedTrainers, setExpandedTrainers] = useState({});
   const [sessions, setSessions] = useState({});
   const [incomingCall, setIncomingCall] = useState(null);
   const [callDeclined, setCallDeclined] = useState(null);
@@ -77,7 +138,7 @@ export default function MyTrainersView() {
 
   const openCallTab = (roomId, remoteUser, isInitiator, isOfficialSession) => {
     const cu = JSON.parse(localStorage.getItem('user') || '{}');
-    const p = new URLSearchParams({
+    const params = new URLSearchParams({
       roomId,
       remoteUserId: remoteUser._id,
       remoteUserName: remoteUser.name,
@@ -87,7 +148,7 @@ export default function MyTrainersView() {
       currentUserName: cu.name,
       token: cu.token,
     });
-    window.open(`/call?${p.toString()}`, '_blank', 'width=960,height=680,noopener');
+    window.open(`/call?${params.toString()}`, '_blank', 'width=960,height=680,noopener');
   };
 
   const fetchBookings = async () => {
@@ -113,12 +174,12 @@ export default function MyTrainersView() {
   };
 
   const startOfficialSession = async (booking) => {
-    let sess = sessions[booking._id];
-    if (!sess || sess === 'loading') {
+    let session = sessions[booking._id];
+    if (!session || session === 'loading') {
       try {
         const res = await fetch(`${API}/api/sessions/booking/${booking._id}`, { headers: authHeader });
-        sess = await res.json();
-        setSessions((prev) => ({ ...prev, [booking._id]: sess }));
+        session = await res.json();
+        setSessions((prev) => ({ ...prev, [booking._id]: session }));
       } catch {
         return;
       }
@@ -129,12 +190,12 @@ export default function MyTrainersView() {
       toUserId: trainer._id || trainer,
       fromUserId: currentUser._id,
       fromUserName: currentUser.name,
-      roomId: sess.roomId,
+      roomId: session.roomId,
       isOfficialSession: true,
     });
 
     openCallTab(
-      sess.roomId,
+      session.roomId,
       { _id: trainer._id || trainer, name: trainer.name || 'Trainer' },
       true,
       true
@@ -229,11 +290,11 @@ export default function MyTrainersView() {
 
       paymentTab.close();
       throw new Error('Khalti payment URL not received');
-    } catch (err) {
+    } catch (error) {
       try {
         paymentTab.close();
       } catch {}
-      alert(err.message || 'Unable to start payment');
+      alert(error.message || 'Unable to start payment');
       setPayingId(null);
     }
   };
@@ -292,284 +353,540 @@ export default function MyTrainersView() {
 
   useEffect(() => {
     bookings
-      .filter((b) => b.sessionType === 'Online' && b.status === 'confirmed')
-      .forEach((b) => loadSession(b._id));
+      .filter((booking) => booking.sessionType === 'Online' && booking.status === 'confirmed')
+      .forEach((booking) => loadSession(booking._id));
   }, [bookings]);
 
-  const trainerMap = bookings.reduce((acc, b) => {
-    const tid = (b.trainer?._id || b.trainer || '').toString();
-    if (!tid) return acc;
-    if (!acc[tid]) acc[tid] = { trainer: b.trainer, bookings: [] };
-    acc[tid].bookings.push(b);
+  const totalTrainers = new Set(
+    bookings
+      .map((booking) => (booking.trainer?._id || booking.trainer || '').toString())
+      .filter(Boolean)
+  ).size;
+  const activeTrainers = new Set(
+    bookings
+      .filter(
+        (booking) =>
+          booking.status === 'confirmed' ||
+          booking.status === 'pending' ||
+          booking.status === 'accepted_awaiting_payment'
+      )
+      .map((booking) => (booking.trainer?._id || booking.trainer || '').toString())
+      .filter(Boolean)
+  ).size;
+  const onlineTrainers = new Set(
+    bookings
+      .filter((booking) => booking.sessionType === 'Online')
+      .map((booking) => (booking.trainer?._id || booking.trainer || '').toString())
+      .filter(Boolean)
+  ).size;
+  const completedSessions = bookings.filter((booking) => booking.status === 'completed').length;
+
+  const scopedBookings =
+    trainerScope === 'active'
+      ? bookings.filter(
+          (booking) =>
+            booking.status === 'confirmed' ||
+            booking.status === 'pending' ||
+            booking.status === 'accepted_awaiting_payment'
+        )
+      : bookings;
+
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredBookings = scopedBookings.filter((booking) => {
+    const trainerName = booking.trainer?.name?.toLowerCase() || '';
+    const trainerEmail = booking.trainer?.email?.toLowerCase() || '';
+    const matchesQuery =
+      !normalizedQuery ||
+      trainerName.includes(normalizedQuery) ||
+      trainerEmail.includes(normalizedQuery);
+
+    const matchesType =
+      bookingTypeFilter === 'all' ||
+      (bookingTypeFilter === 'online' && booking.sessionType === 'Online') ||
+      (bookingTypeFilter === 'offline' && booking.sessionType !== 'Online');
+
+    return matchesQuery && matchesType;
+  });
+
+  const trainerMap = filteredBookings.reduce((acc, booking) => {
+    const trainerId = (booking.trainer?._id || booking.trainer || '').toString();
+    if (!trainerId) return acc;
+
+    if (!acc[trainerId]) acc[trainerId] = { trainer: booking.trainer, bookings: [] };
+    acc[trainerId].bookings.push(booking);
     return acc;
   }, {});
 
-  const trainers = Object.values(trainerMap);
-
-  const totalUpcoming = bookings.filter((b) => b.status === 'confirmed').length;
-  const totalPending = bookings.filter(
-    (b) => b.status === 'pending' || b.status === 'accepted_awaiting_payment'
-  ).length;
-  const totalCompleted = bookings.filter((b) => b.status === 'completed').length;
+  const trainers = Object.values(trainerMap)
+    .map((entry) => ({
+      ...entry,
+      bookings: [...entry.bookings].sort(
+        (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      ),
+    }))
+    .sort((a, b) => a.trainer?.name?.localeCompare(b.trainer?.name || '') || 0);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex h-64 items-center justify-center rounded-lg border border-gray-200 bg-white">
         <Loader size={28} className="animate-spin text-brandOrange" />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="bg-white p-5 rounded-2xl border border-gray-100">
-        <h2 className="text-xl font-bold text-gray-900">My Trainers</h2>
-        <p className="text-gray-400 text-sm mt-0.5">Your bookings, payments and online sessions.</p>
-        <div className="flex gap-4 mt-4">
-          <div className="flex-1 bg-orange-50 rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold text-brandOrange">{trainers.length}</p>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mt-0.5">Trainers</p>
+    <div className="space-y-5">
+      <section className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <div className="flex flex-col gap-5 border-b border-gray-100 px-5 py-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-400">
+              Trainer Directory
+            </p>
+            <h2 className="mt-1 text-xl font-bold text-[#111111]">Manage your trainer bookings</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Search trainers, filter bookings, and keep payments and online sessions in one place.
+            </p>
           </div>
-          <div className="flex-1 bg-emerald-50 rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold text-emerald-600">{totalUpcoming}</p>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mt-0.5">Upcoming</p>
-          </div>
-          <div className="flex-1 bg-amber-50 rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold text-amber-600">{totalPending}</p>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mt-0.5">Pending</p>
-          </div>
-          <div className="flex-1 bg-blue-50 rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold text-blue-600">{totalCompleted}</p>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mt-0.5">Completed</p>
+
+          <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-4 lg:w-auto lg:justify-items-start">
+            <SummaryStat label="Total Trainers" value={totalTrainers} tone="orange" />
+            <SummaryStat label="Active Trainers" value={activeTrainers} tone="green" />
+            <SummaryStat label="Online Trainers" value={onlineTrainers} tone="slate" />
+            <SummaryStat label="Completed" value={completedSessions} tone="blue" />
           </div>
         </div>
-      </div>
 
-      {trainers.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <User size={40} className="text-gray-200 mb-3" />
-          <p className="text-lg font-bold text-gray-500">No trainers yet</p>
-          <p className="text-sm text-gray-400 mt-1">Book a session from the Find Trainers page</p>
+        <div className="space-y-4 px-5 py-4">
+          <div className="grid gap-3 lg:grid-cols-[1.2fr_auto_auto_auto]">
+            <label className="relative block">
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search by trainer name or email"
+                className="w-full rounded-md border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm text-[#111111] outline-none transition focus:border-[#FF6700]/35"
+              />
+            </label>
+
+            <select
+              value={trainerScope}
+              onChange={(event) => setTrainerScope(event.target.value)}
+              className="rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-600 outline-none transition focus:border-[#FF6700]/35"
+            >
+              {scopeOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={bookingTypeFilter}
+              onChange={(event) => setBookingTypeFilter(event.target.value)}
+              className="rounded-md border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-600 outline-none transition focus:border-[#FF6700]/35"
+            >
+              {bookingTypeOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setTrainerScope('active');
+                setBookingTypeFilter('all');
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-gray-600 transition hover:border-[#FF6700]/25 hover:text-[#FF6700]"
+            >
+              <SlidersHorizontal size={15} />
+              Reset
+            </button>
+          </div>
         </div>
-      )}
+      </section>
 
-      {trainers.map(({ trainer, bookings: tb }) => {
-        const tid = (trainer?._id || trainer || '').toString();
-        const trainerName = trainer?.name || 'Trainer';
-        const trainerEmail = trainer?.email || '';
-        const sortedBookings = [...tb].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        const latest = sortedBookings[0];
-        const confirmedCount = tb.filter((b) => b.status === 'confirmed').length;
-        const completedCount = tb.filter((b) => b.status === 'completed').length;
-        const isExpanded = expanded[tid];
-        const isPackage = latest?.notes?.startsWith('Package:');
-        const onlineReady = tb.filter((b) => b.sessionType === 'Online' && b.status === 'confirmed');
+      {trainers.length === 0 ? (
+        <div className="rounded-lg border border-gray-200 bg-white px-6 py-20">
+          <div className="flex flex-col items-center justify-center text-center">
+            <User size={40} className="mb-3 text-gray-200" />
+            <p className="text-lg font-bold text-gray-500">No trainers found</p>
+            <p className="mt-1 text-sm text-gray-400">
+              Try adjusting the filters or book a new session to get started.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {trainers.map(({ trainer, bookings: trainerBookings }) => {
+            const trainerId = (trainer?._id || trainer || '').toString();
+            const trainerName = trainer?.name || 'Trainer';
+            const trainerEmail = trainer?.email || '';
+            const latest = trainerBookings[0];
+            const confirmedCount = trainerBookings.filter((booking) => booking.status === 'confirmed').length;
+            const completedCount = trainerBookings.filter((booking) => booking.status === 'completed').length;
+            const pendingCount = trainerBookings.filter(
+              (booking) =>
+                booking.status === 'pending' || booking.status === 'accepted_awaiting_payment'
+            ).length;
+            const onlineReady = trainerBookings
+              .filter((booking) => booking.sessionType === 'Online' && booking.status === 'confirmed')
+              .sort((a, b) => {
+                const first = parseDateValue(a.sessionDate)?.getTime() || 0;
+                const second = parseDateValue(b.sessionDate)?.getTime() || 0;
+                return first - second;
+              });
 
-        return (
-          <div key={tid} className="bg-white rounded-2xl border border-gray-100 p-5 hover:border-gray-200 transition">
-            <div className="flex flex-col md:flex-row md:items-center gap-4">
-              <div className="flex items-center gap-3 flex-1">
-                <div className="w-12 h-12 rounded-xl bg-brandOrange/10 text-brandOrange flex items-center justify-center font-bold text-lg shrink-0">
-                  {trainerName.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <p className="font-bold text-gray-800">{trainerName}</p>
-                  <p className="text-xs text-gray-400">{trainerEmail}</p>
-                  <div className="flex items-center gap-3 mt-1 text-[10px] font-bold text-gray-400">
-                    <span className="text-emerald-600">{confirmedCount} upcoming</span>
-                    <span>·</span>
-                    <span className="text-blue-600">{completedCount} completed</span>
-                    <span>·</span>
-                    <span>{tb.length} total</span>
-                  </div>
-                </div>
-              </div>
+            const primaryOnline = onlineReady[0] || null;
+            const additionalOnlineCount = Math.max(onlineReady.length - 1, 0);
+            const primarySession = primaryOnline ? sessions[primaryOnline._id] : null;
+            const latestFormat = getBookingFormat(latest);
+            const isExpanded = Boolean(expandedTrainers[trainerId]);
 
-              <div className="flex flex-wrap gap-2 text-xs text-gray-500">
-                <span className="flex items-center gap-1 bg-gray-50 px-2.5 py-1.5 rounded-lg">
-                  <Calendar size={11} /> {latest?.sessionDate}
-                </span>
-                <span className="flex items-center gap-1 bg-gray-50 px-2.5 py-1.5 rounded-lg">
-                  <Clock size={11} /> {latest?.sessionTime}
-                </span>
-                <span className="flex items-center gap-1 bg-gray-50 px-2.5 py-1.5 rounded-lg">
-                  {latest?.sessionType === 'Online' ? <Video size={11} /> : <MapPin size={11} />}
-                  {latest?.sessionType}
-                </span>
-                {isPackage && (
-                  <span className="flex items-center gap-1 bg-orange-50 text-brandOrange px-2.5 py-1.5 rounded-lg font-bold">
-                    <Package size={11} /> Package
-                  </span>
-                )}
-              </div>
-
-              <span className={`text-xs font-bold px-3 py-1.5 rounded-lg shrink-0 ${(statusStyles[latest?.status] || statusStyles.pending).pill}`}>
-                {(statusStyles[latest?.status] || statusStyles.pending).label}
-              </span>
-            </div>
-
-            {onlineReady.map((booking) => {
-              const sess = sessions[booking._id];
-              return (
-                <div key={booking._id} className="mt-4 bg-blue-50 border border-blue-100 rounded-xl p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-bold text-blue-700 flex items-center gap-1.5">
-                      <Video size={12} /> Online Session
-                      <span className="font-normal text-blue-500 ml-1">
-                        {booking.sessionDate} · {booking.sessionTime}
-                      </span>
-                    </p>
-                    {sess && sess !== 'loading' && (
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${sessionStatusStyles[sess.sessionStatus] || ''}`}>
-                        {sess.sessionStatus}
-                      </span>
-                    )}
-                  </div>
-
-                  {(!sess || sess === 'loading' || sess?.sessionStatus === 'scheduled') && (
-                    <button
-                      onClick={() => startOfficialSession(booking)}
-                      disabled={sess === 'loading'}
-                      className="w-full py-2 bg-brandOrange text-white text-xs font-bold rounded-lg hover:bg-orange-600 transition flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                      <Video size={13} /> Join Session
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-
-            <div className="mt-4 pt-4 border-t border-gray-50">
-              <button
-                onClick={() => setExpanded((p) => ({ ...p, [tid]: !p[tid] }))}
-                className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider hover:text-gray-600 transition mb-2"
+            return (
+              <section
+                key={trainerId || trainerName}
+                className="overflow-hidden rounded-lg border border-gray-200 bg-white"
               >
-                All Bookings ({tb.length})
-                {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-              </button>
+                <div className="px-5 py-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-md bg-[#FF6700]/10 text-lg font-bold text-[#FF6700]">
+                          {trainerName.charAt(0).toUpperCase()}
+                        </div>
 
-              {isExpanded && (
-                <div className="flex flex-col gap-2">
-                  {sortedBookings.map((b) => {
-                    const s = statusStyles[b.status] || statusStyles.pending;
-                    return (
-                      <div key={b._id} className="bg-gray-50 rounded-lg px-3 py-3">
-                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 text-xs text-gray-500">
-                          <span>
-                            {b.sessionDate} at {b.sessionTime} · {b.sessionType}
-                          </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-[#111111]">{trainerName}</p>
+                          <p className="truncate text-xs text-gray-400">{trainerEmail}</p>
+                        </div>
+                      </div>
 
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-semibold text-gray-700">
-                              Rs. {(b.totalAmount || b.price)?.toLocaleString()}
-                            </span>
-                            <span className={`font-bold px-2 py-0.5 rounded-full text-[10px] ${s.pill}`}>
-                              {s.label}
-                            </span>
-                            <span className="font-bold px-2 py-0.5 rounded-full text-[10px] bg-white border border-gray-200 text-gray-600">
-                              Payment: {b.paymentStatus || 'unpaid'}
-                            </span>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <MetaPill label={`${confirmedCount} upcoming`} accent="green" />
+                        <MetaPill label={`${pendingCount} pending`} accent="amber" />
+                        <MetaPill label={`${completedCount} completed`} accent="blue" />
+                        <MetaPill label={`${trainerBookings.length} bookings`} />
+                        <MetaPill
+                          icon={latest?.sessionType === 'Online' ? <Video size={13} /> : <MapPin size={13} />}
+                          label={latest?.sessionType || 'Session'}
+                        />
+                        <MetaPill
+                          icon={latestFormat.isPackage ? <Package size={13} /> : null}
+                          label={latestFormat.label}
+                        />
+                      </div>
+                    </div>
 
-                            {b.status === 'pending' && (
-                              <button
-                                onClick={() => cancelBooking(b._id)}
-                                className="text-[10px] font-bold text-red-400 hover:text-red-600"
-                              >
-                                Cancel
-                              </button>
-                            )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-md px-2.5 py-1 text-[11px] font-bold ${
+                          (statusStyles[latest?.status] || statusStyles.pending).pill
+                        }`}
+                      >
+                        {(statusStyles[latest?.status] || statusStyles.pending).label}
+                      </span>
 
-                            {b.status === 'accepted_awaiting_payment' && b.paymentStatus !== 'paid' && (
-                              <button
-                                onClick={() => startKhaltiPayment(b._id)}
-                                disabled={payingId === b._id}
-                                className="flex items-center gap-1 bg-brandOrange text-white px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-orange-600 transition disabled:opacity-50"
-                              >
-                                {payingId === b._id ? (
-                                  <Loader size={12} className="animate-spin" />
-                                ) : (
-                                  <CreditCard size={12} />
-                                )}
-                                Pay with Khalti
-                              </button>
-                            )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedTrainers((prev) => ({ ...prev, [trainerId]: !prev[trainerId] }))
+                        }
+                        className="inline-flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 transition hover:border-[#FF6700]/25 hover:text-[#FF6700]"
+                      >
+                        {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                        {isExpanded ? 'Hide History' : 'View History'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {primaryOnline ? (
+                    <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-3">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                          <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-blue-700">
+                            <Video size={13} />
+                            Next Online Session
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <MetaPill
+                              icon={<Calendar size={13} />}
+                              label={formatSessionDate(primaryOnline.sessionDate)}
+                              subtle
+                            />
+                            <MetaPill
+                              icon={<Clock size={13} />}
+                              label={primaryOnline.sessionTime || 'Time not set'}
+                              subtle
+                            />
+                            <MetaPill
+                              label={`Rs. ${primaryOnline.totalAmount || primaryOnline.price || 0}`}
+                              strong
+                            />
+                            {additionalOnlineCount > 0 ? (
+                              <MetaPill label={`+${additionalOnlineCount} more online`} subtle />
+                            ) : null}
                           </div>
                         </div>
 
-                        {(b.platformFee > 0 || b.trainerEarning > 0) && (
-                          <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                            <span className="bg-white border border-gray-200 rounded-full px-2.5 py-1 text-gray-600 font-medium">
-                              App Fee: Rs. {b.platformFee || 0}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {primarySession && primarySession !== 'loading' ? (
+                            <span
+                              className={`rounded-md border px-2.5 py-1 text-[11px] font-bold ${
+                                sessionStatusStyles[primarySession.sessionStatus] || ''
+                              }`}
+                            >
+                              {primarySession.sessionStatus}
                             </span>
-                            <span className="bg-white border border-gray-200 rounded-full px-2.5 py-1 text-gray-600 font-medium">
-                              Trainer Share: Rs. {b.trainerEarning || 0}
-                            </span>
-                          </div>
-                        )}
+                          ) : null}
+
+                          {(!primarySession ||
+                            primarySession === 'loading' ||
+                            primarySession?.sessionStatus === 'scheduled') && (
+                            <button
+                              onClick={() => startOfficialSession(primaryOnline)}
+                              disabled={primarySession === 'loading'}
+                              className="inline-flex items-center justify-center gap-2 rounded-md bg-[#FF6700] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
+                            >
+                              <Video size={15} />
+                              Join Session
+                            </button>
+                          )}
+
+                          {primarySession?.sessionStatus === 'live' && (
+                            <button
+                              onClick={() => startOfficialSession(primaryOnline)}
+                              className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-600"
+                            >
+                              <Video size={15} />
+                              Rejoin Live Session
+                            </button>
+                          )}
+
+                          {primarySession?.sessionStatus === 'completed' && (
+                            <div className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700">
+                              <CheckCircle size={15} />
+                              Completed
+                              {primarySession.durationMinutes
+                                ? ` ${primarySession.durationMinutes} min`
+                                : ''}
+                            </div>
+                          )}
+
+                          {primarySession?.sessionStatus === 'missed' && (
+                            <div className="inline-flex items-center gap-2 rounded-md border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-600">
+                              <XCircle size={15} />
+                              Missed
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  ) : null}
+
+                  {latest?.notes ? (
+                    <div className="mt-4 rounded-md border border-gray-200 bg-[#FAFAFA] px-4 py-3">
+                      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">
+                        Latest Note
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-gray-600">{latest.notes}</p>
+                    </div>
+                  ) : null}
                 </div>
-              )}
-            </div>
 
-            {latest?.notes && (
-              <div className="mt-3 pt-3 border-t border-gray-50">
-                <p className="text-xs text-gray-400 italic">"{latest.notes}"</p>
-              </div>
-            )}
-          </div>
-        );
-      })}
+                {isExpanded ? (
+                  <div className="border-t border-gray-100 bg-[#FCFCFD] px-5 py-4">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">
+                      Booking History
+                    </p>
+                    <div className="space-y-2">
+                      {trainerBookings.map((booking) => {
+                        const bookingFormat = getBookingFormat(booking);
+                        const bookingStatus = statusStyles[booking.status] || statusStyles.pending;
+                        const canPay =
+                          booking.status === 'accepted_awaiting_payment' &&
+                          booking.paymentStatus !== 'paid';
 
-      {callDeclined && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
-          <PhoneOff size={18} className="text-red-400 shrink-0" />
-          <p className="text-sm font-semibold">{callDeclined.name} declined the call</p>
+                        return (
+                          <div
+                            key={booking._id}
+                            className="flex flex-col gap-3 rounded-md border border-gray-200 bg-white px-4 py-3"
+                          >
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                              <div className="flex flex-wrap gap-2">
+                                <MetaPill
+                                  icon={<Calendar size={13} />}
+                                  label={formatSessionDate(booking.sessionDate)}
+                                />
+                                <MetaPill
+                                  icon={<Clock size={13} />}
+                                  label={booking.sessionTime || 'Time not set'}
+                                />
+                                <MetaPill
+                                  icon={
+                                    booking.sessionType === 'Online' ? (
+                                      <Video size={13} />
+                                    ) : (
+                                      <MapPin size={13} />
+                                    )
+                                  }
+                                  label={booking.sessionType || 'Session'}
+                                />
+                                <MetaPill
+                                  icon={bookingFormat.isPackage ? <Package size={13} /> : null}
+                                  label={bookingFormat.label}
+                                />
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                <MetaPill
+                                  label={`Rs. ${booking.totalAmount || booking.price || 0}`}
+                                  strong
+                                />
+                                <span
+                                  className={`rounded-md px-2.5 py-1 text-[11px] font-bold ${bookingStatus.pill}`}
+                                >
+                                  {bookingStatus.label}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                              {booking.paymentStatus === 'paid' ? (
+                                <MetaPill label="Paid" accent="green" />
+                              ) : null}
+
+                              {booking.status === 'pending' ? (
+                                <button
+                                  onClick={() => cancelBooking(booking._id)}
+                                  className="inline-flex items-center justify-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-semibold text-red-500 transition hover:bg-red-50"
+                                >
+                                  Cancel Booking
+                                </button>
+                              ) : null}
+
+                              {canPay ? (
+                                <button
+                                  onClick={() => startKhaltiPayment(booking._id)}
+                                  disabled={payingId === booking._id}
+                                  className="inline-flex items-center justify-center gap-2 rounded-md bg-[#FF6700] px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:opacity-50"
+                                >
+                                  {payingId === booking._id ? (
+                                    <Loader size={14} className="animate-spin" />
+                                  ) : (
+                                    <CreditCard size={14} />
+                                  )}
+                                  Pay with Khalti
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+            );
+          })}
         </div>
       )}
 
-      {incomingCall && (
+      {callDeclined ? (
+        <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-2xl bg-gray-900 px-6 py-3 text-white shadow-2xl">
+          <PhoneOff size={18} className="shrink-0 text-red-400" />
+          <p className="text-sm font-semibold">{callDeclined.name} declined the call</p>
+        </div>
+      ) : null}
+
+      {incomingCall ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
         >
-          <div className="bg-gray-900 rounded-3xl p-8 shadow-2xl text-center max-w-sm w-full mx-4 border border-gray-700">
-            <div className="relative w-24 h-24 mx-auto mb-5">
-              <div className="absolute inset-0 rounded-full bg-brandOrange/20 animate-ping" />
+          <div className="mx-4 w-full max-w-sm rounded-3xl border border-gray-700 bg-gray-900 p-8 text-center shadow-2xl">
+            <div className="relative mx-auto mb-5 h-24 w-24">
+              <div className="absolute inset-0 animate-ping rounded-full bg-brandOrange/20" />
               <div
-                className="absolute inset-2 rounded-full bg-brandOrange/30 animate-ping"
+                className="absolute inset-2 animate-ping rounded-full bg-brandOrange/30"
                 style={{ animationDelay: '0.2s' }}
               />
-              <div className="relative w-24 h-24 rounded-full bg-brandOrange flex items-center justify-center">
+              <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-brandOrange">
                 <Phone size={32} className="text-white" />
               </div>
             </div>
-            <h3 className="text-xl font-bold text-white mb-1">Incoming Call</h3>
-            <p className="text-gray-400 text-sm mb-2">{incomingCall.fromUserName} is calling</p>
-            {incomingCall.isOfficialSession && (
-              <span className="inline-block mb-4 text-xs font-bold bg-green-500/20 text-green-400 px-3 py-1 rounded-full border border-green-500/30">
+            <h3 className="mb-1 text-xl font-bold text-white">Incoming Call</h3>
+            <p className="mb-2 text-sm text-gray-400">{incomingCall.fromUserName} is calling</p>
+            {incomingCall.isOfficialSession ? (
+              <span className="mb-4 inline-block rounded-full border border-green-500/30 bg-green-500/20 px-3 py-1 text-xs font-bold text-green-400">
                 Official Session Call
               </span>
-            )}
-            <p className="text-gray-500 text-xs mb-5">You must accept or decline to continue</p>
+            ) : null}
+            <p className="mb-5 text-xs text-gray-500">You must accept or decline to continue</p>
             <div className="flex gap-3">
               <button
                 onClick={declineCall}
-                className="flex-1 py-4 rounded-2xl bg-red-500/20 text-red-400 font-bold hover:bg-red-500/30 border border-red-500/30 transition flex items-center justify-center gap-2"
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-red-500/30 bg-red-500/20 py-4 font-bold text-red-400 transition hover:bg-red-500/30"
               >
                 <PhoneOff size={20} /> Decline
               </button>
               <button
                 onClick={acceptCall}
-                className="flex-1 py-4 rounded-2xl bg-green-500 text-white font-bold hover:bg-green-600 transition flex items-center justify-center gap-2"
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-green-500 py-4 font-bold text-white transition hover:bg-green-600"
               >
                 <Phone size={20} /> Accept
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
+
+const SummaryStat = ({ label, value, tone }) => {
+  const tones = {
+    orange: 'text-[#FF6700]',
+    green: 'text-emerald-700',
+    slate: 'text-slate-700',
+    blue: 'text-blue-700',
+  };
+
+  return (
+    <div className="px-2 py-1 text-center">
+      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400">{label}</p>
+      <p className={`mt-1.5 text-[22px] font-bold tracking-tight ${tones[tone]}`}>{value}</p>
+    </div>
+  );
+};
+
+const MetaPill = ({ icon, label, strong = false, subtle = false, accent }) => {
+  const accents = {
+    green: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    amber: 'bg-amber-50 text-amber-700 border-amber-200',
+    blue: 'bg-blue-50 text-blue-700 border-blue-200',
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[11px] ${
+        strong
+          ? 'border-[#111111] bg-[#111111] text-white'
+          : subtle
+          ? 'border-blue-100 bg-white text-blue-700'
+          : accent
+          ? accents[accent]
+          : 'border-gray-200 bg-white text-gray-600'
+      }`}
+    >
+      {icon ? <span className={strong ? 'text-white/75' : 'text-gray-400'}>{icon}</span> : null}
+      <span className={strong ? 'font-semibold' : 'font-medium'}>{label}</span>
+    </span>
+  );
+};
